@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "name": "GM Hub Project",
+  "canvas": {
+    "width": 1920.0,
+    "height": 1080.0
+  },
+  "root": {
+    "id": "root",
+    "type": "group",
+    "name": "Root",
+    "visible": true,
+    "locked": false,
+    "opacity": 1.0,
+    "transform": {
+      "x": 0.0,
+      "y": 0.0,
+      "scale": 1.0,
+      "rotation": 0.0
+    },
+    "children": []
+  },
+  "audio": {
+    "tracks": [],
+    "state": {
+      "currentTrackId": null,
+      "loop": true,
+      "volume": 0.8,
+      "isPlaying": false
+    }
+  },
+  "uiState": {
+    "collapsedGroupIds": [],
+    "outputScaleMode": "contain"
+  }
+}

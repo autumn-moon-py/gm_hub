@@ -1,0 +1,237 @@
+{
+  "$schema": "nexus-mapper/concept-model/v1",
+  "generated_at": "2026-04-07T11:30:00+08:00",
+  "repo_path": "D:/project/flutter/gm_hub",
+  "generator": "nexus-mapper v2 (local compatible run)",
+  "nodes": [
+    {
+      "id": "system-bootstrap-routing",
+      "type": "System",
+      "label": "Bootstrap Routing",
+      "responsibility": "根据启动参数路由主窗口或输出窗口，并初始化 GetX 路由与控制器绑定。",
+      "implementation_status": "implemented",
+      "code_path": "lib/main.dart",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": [
+        "flutter",
+        "getx"
+      ],
+      "related_reqs": [],
+      "complexity": "medium",
+      "hotspot": false
+    },
+    {
+      "id": "system-editor-state-core",
+      "type": "System",
+      "label": "Editor State Core",
+      "responsibility": "管理项目状态、图层树操作、保存流程、音频与骰子运行态，并生成输出渲染列表。",
+      "implementation_status": "implemented",
+      "code_path": "lib/src/store/project_store.dart",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": [
+        "dart",
+        "flutter"
+      ],
+      "related_reqs": [],
+      "complexity": "high",
+      "hotspot": true
+    },
+    {
+      "id": "system-project-file-persistence",
+      "type": "System",
+      "label": "Project File Persistence",
+      "responsibility": "读写 .gmh/.json 项目文件并处理资源导入，提供保存链路的持久化能力。",
+      "implementation_status": "implemented",
+      "code_path": "lib/src/store/project_file_service.dart",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": [
+        "dart",
+        "path"
+      ],
+      "related_reqs": [],
+      "complexity": "medium",
+      "hotspot": false
+    },
+    {
+      "id": "system-main-editor-ui",
+      "type": "System",
+      "label": "Main Editor UI",
+      "responsibility": "提供主持端交互界面，覆盖菜单、舞台编辑、图层树、骰子、音频和快捷键入口。",
+      "implementation_status": "implemented",
+      "code_path": "lib/src/ui/main_shell.dart",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": [
+        "flutter"
+      ],
+      "related_reqs": [],
+      "complexity": "high",
+      "hotspot": true
+    },
+    {
+      "id": "system-output-sync-runtime",
+      "type": "System",
+      "label": "Output Sync Runtime",
+      "responsibility": "管理输出子窗口生命周期，构建并推送 sync_render 合同，驱动玩家侧实时渲染。",
+      "implementation_status": "implemented",
+      "code_path": "lib/src/controller/project_controller.dart",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": [
+        "desktop_multi_window",
+        "flutter"
+      ],
+      "related_reqs": [],
+      "complexity": "high",
+      "hotspot": true
+    },
+    {
+      "id": "system-output-render-client",
+      "type": "System",
+      "label": "Output Render Client",
+      "responsibility": "解析同步负载并在输出窗口执行布局与渲染，形成玩家可见画面。",
+      "implementation_status": "implemented",
+      "code_path": "lib/src/output_window_app.dart",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": [
+        "flutter"
+      ],
+      "related_reqs": [],
+      "complexity": "medium",
+      "hotspot": false
+    },
+    {
+      "id": "system-windows-host-packaging",
+      "type": "System",
+      "label": "Windows Host Packaging",
+      "responsibility": "承载 Windows 原生入口和安装分发配置，输出可安装的 MSIX 包并关联 .gmh 文件。",
+      "implementation_status": "implemented",
+      "code_path": "pubspec.yaml",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": [
+        "msix",
+        "cpp",
+        "powershell"
+      ],
+      "related_reqs": [],
+      "complexity": "medium",
+      "hotspot": true
+    },
+    {
+      "id": "domain-project-schema",
+      "type": "Domain",
+      "label": "Project Schema",
+      "responsibility": "定义项目画布、节点树、音频状态与 UI 状态的聚合数据结构。",
+      "implementation_status": "implemented",
+      "code_path": "lib/src/model/project_model.dart",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": [
+        "dart"
+      ],
+      "related_reqs": [],
+      "complexity": "medium",
+      "hotspot": false
+    },
+    {
+      "id": "domain-render-sync-contract",
+      "type": "Domain",
+      "label": "Render Sync Contract",
+      "responsibility": "定义主窗口到输出窗口的渲染同步契约与字段含义，保证跨窗口一致性。",
+      "implementation_status": "implemented",
+      "code_path": "lib/src/output/sync_render_payload.dart",
+      "evidence_path": null,
+      "evidence_gap": null,
+      "tech_stack": [
+        "dart"
+      ],
+      "related_reqs": [],
+      "complexity": "medium",
+      "hotspot": true
+    }
+  ],
+  "edges": [
+    {
+      "source": "system-bootstrap-routing",
+      "target": "system-main-editor-ui",
+      "type": "depends_on",
+      "description": "主窗口入口指向编辑 UI"
+    },
+    {
+      "source": "system-main-editor-ui",
+      "target": "system-output-sync-runtime",
+      "type": "depends_on",
+      "description": "UI 通过控制器触发输出窗口与保存动作"
+    },
+    {
+      "source": "system-main-editor-ui",
+      "target": "system-editor-state-core",
+      "type": "depends_on",
+      "description": "编辑交互读取并修改项目状态"
+    },
+    {
+      "source": "system-output-sync-runtime",
+      "target": "system-editor-state-core",
+      "type": "depends_on",
+      "description": "控制器从状态核心构建同步 payload"
+    },
+    {
+      "source": "system-editor-state-core",
+      "target": "domain-project-schema",
+      "type": "depends_on",
+      "description": "状态核心依赖项目聚合模型"
+    },
+    {
+      "source": "system-editor-state-core",
+      "target": "system-project-file-persistence",
+      "type": "depends_on",
+      "description": "保存与加载委托给文件服务"
+    },
+    {
+      "source": "system-output-sync-runtime",
+      "target": "domain-render-sync-contract",
+      "type": "depends_on",
+      "description": "控制器构建并发送同步合同"
+    },
+    {
+      "source": "system-output-render-client",
+      "target": "domain-render-sync-contract",
+      "type": "depends_on",
+      "description": "输出窗口解析同步合同并渲染"
+    },
+    {
+      "source": "system-windows-host-packaging",
+      "target": "system-bootstrap-routing",
+      "type": "depends_on",
+      "description": "安装态/非安装态入口和文件关联策略依赖主程序入口"
+    }
+  ],
+  "metadata": {
+    "total_files": 92,
+    "total_lines": 11979,
+    "languages": [
+      "c",
+      "cpp",
+      "dart"
+    ],
+    "git_commits_analyzed": 0,
+    "analysis_days": 120
+  },
+  "evidence_gaps": [
+    {
+      "scope": "dart_dependency_precision",
+      "detail": "Dart is module-only AST coverage in this run (no structural/import query output).",
+      "impact": "cross-module dependency edges in lib/** are inferred rather than directly extracted."
+    },
+    {
+      "scope": "git_forensics",
+      "detail": "Workspace has no .git metadata.",
+      "impact": "hotspots and coupling pairs cannot be computed from commit history."
+    }
+  ]
+}

@@ -1,0 +1,596 @@
+part of 'project_store.dart';
+
+extension ProjectStoreNodeOps on ProjectStore {
+  bool moveSelectionDown() => _moveSelection(1);
+
+  List<String> resolveDraggedNodeIds(String draggedId) {
+    if (draggedId.isEmpty || draggedId == 'root') {
+      return const [];
+    }
+    final selected =
+        _selectedIds.where((id) => id != 'root').toList(growable: false);
+    if (!selected.contains(draggedId)) {
+      return [draggedId];
+    }
+    return selected;
+  }
+
+  bool canDropNode({
+    required String draggedId,
+    required String targetId,
+    DropPlacement placement = DropPlacement.before,
+  }) {
+    final draggedIds = resolveDraggedNodeIds(draggedId);
+    if (draggedIds.isEmpty || draggedIds.contains(targetId)) {
+      return false;
+    }
+    final target = _findNodeById(_project.root, targetId);
+    if (target == null) {
+      return false;
+    }
+    final targetPath = _findPathToNode(targetId);
+    if (targetPath == null) {
+      return false;
+    }
+    for (final n in targetPath) {
+      if (draggedIds.contains(n.id)) {
+        return false;
+      }
+    }
+    if (placement == DropPlacement.into && !target.isGroup) {
+      return false;
+    }
+    final locations = draggedIds
+        .map(_findNodeLocation)
+        .whereType<_NodeLocation>()
+        .toList(growable: false);
+    if (locations.length != draggedIds.length) {
+      return false;
+    }
+    if (placement != DropPlacement.into) {
+      final targetLocation = _findNodeLocation(targetId);
+      if (targetLocation == null) {
+        return false;
+      }
+      final sameParent = locations
+          .every((location) => location.parentId == targetLocation.parentId);
+      if (sameParent) {
+        final indexes = locations.map((e) => e.index).toSet();
+        if (placement == DropPlacement.before &&
+            indexes.contains(targetLocation.index)) {
+          return false;
+        }
+        if (placement == DropPlacement.after &&
+            indexes.contains(targetLocation.index + 1)) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  bool moveNodeByDrop({
+    required String draggedId,
+    required String targetId,
+    DropPlacement placement = DropPlacement.before,
+  }) {
+    if (!canDropNode(
+      draggedId: draggedId,
+      targetId: targetId,
+      placement: placement,
+    )) {
+      return false;
+    }
+
+    final draggedIds = resolveDraggedNodeIds(draggedId);
+    if (draggedIds.isEmpty) {
+      return false;
+    }
+    final locations =
+        draggedIds.map(_findNodeLocation).whereType<_NodeLocation>().toList();
+    if (locations.length != draggedIds.length) {
+      return false;
+    }
+    locations.sort((a, b) => a.index.compareTo(b.index));
+    final sameParentId = locations.first.parentId;
+    final sameParent =
+        locations.every((location) => location.parentId == sameParentId);
+
+    final movingNodes =
+        locations.map((location) => location.node).toList(growable: false);
+    final movingIdSet = draggedIds.toSet();
+    var rootAfterRemoval = _project
+        .copyWith(
+          root: _removeNodes(_project.root, movingIdSet),
+        )
+        .root;
+
+    final targetNode = _findNodeById(rootAfterRemoval, targetId);
+    if (targetNode == null) {
+      return false;
+    }
+
+    String insertParentId;
+    int insertIndex;
+    if (placement == DropPlacement.into) {
+      insertParentId = targetNode.id;
+      insertIndex = targetNode.children.length;
+    } else {
+      final to = _findNodeLocationInTree(rootAfterRemoval, targetId);
+      if (to == null) {
+        return false;
+      }
+      insertParentId = to.parentId;
+      insertIndex = placement == DropPlacement.after ? to.index + 1 : to.index;
+      if (sameParent && insertParentId == sameParentId) {
+        final removedBeforeInsert =
+            locations.where((location) => location.index < insertIndex).length;
+        insertIndex -= removedBeforeInsert;
+      }
+    }
+
+    rootAfterRemoval = _mutateChildrenOfParent(
+      rootAfterRemoval,
+      insertParentId,
+      (children) {
+        final list = [...children];
+        final idx = insertIndex.clamp(0, list.length);
+        list.insertAll(idx, movingNodes);
+        return list;
+      },
+    );
+
+    _pushLayerHistorySnapshot();
+    _project = _project.copyWith(root: rootAfterRemoval);
+    _onProjectChanged();
+    return true;
+  }
+
+  bool groupSelected() {
+    if (_selectedIds.length < 2) {
+      return false;
+    }
+    final locations = _selectedIds
+        .map(_findNodeLocation)
+        .whereType<_NodeLocation>()
+        .where((e) => e.node.id != 'root')
+        .toList();
+    if (locations.length < 2) {
+      return false;
+    }
+
+    final parentId = locations.first.parentId;
+    if (locations.any((e) => e.parentId != parentId)) {
+      return false;
+    }
+
+    locations.sort((a, b) => a.index.compareTo(b.index));
+    final pickedIds = locations.map((e) => e.node.id).toSet();
+    final groupNode = NodeModel(
+      id: _nextId('group'),
+      type: NodeType.group,
+      name: '分组',
+      visible: true,
+      locked: false,
+      opacity: 1,
+      transform: const TransformModel.identity(),
+      children: locations.map((e) => e.node).toList(),
+    );
+
+    _pushLayerHistorySnapshot();
+    _project = _project.copyWith(
+      root: _mutateChildrenOfParent(
+        _project.root,
+        parentId,
+        (children) {
+          final kept =
+              children.where((e) => !pickedIds.contains(e.id)).toList();
+          final insertAt = locations.first.index;
+          return [...kept.take(insertAt), groupNode, ...kept.skip(insertAt)];
+        },
+      ),
+    );
+    selectNode(groupNode.id);
+    _onProjectChanged();
+    return true;
+  }
+
+  bool ungroupSelection() {
+    final selected = _selection;
+    if (selected == null || selected == 'root') {
+      return false;
+    }
+    final location = _findNodeLocation(selected);
+    if (location == null || !location.node.isGroup) {
+      return false;
+    }
+
+    final group = location.node;
+    final promoted = group.children
+        .map(
+          (child) => child.copyWith(
+            transform: child.transform.copyWith(
+              x: group.transform.x + child.transform.x * group.transform.scale,
+              y: group.transform.y + child.transform.y * group.transform.scale,
+              scale: child.transform.scale * group.transform.scale,
+              rotation: child.transform.rotation + group.transform.rotation,
+            ),
+            opacity: (child.opacity * group.opacity).clamp(0.0, 1.0),
+          ),
+        )
+        .toList();
+
+    _pushLayerHistorySnapshot();
+    _project = _project.copyWith(
+      root: _mutateChildrenOfParent(
+        _project.root,
+        location.parentId,
+        (children) {
+          final next = [...children]..removeAt(location.index);
+          return [
+            ...next.take(location.index),
+            ...promoted,
+            ...next.skip(location.index)
+          ];
+        },
+      ),
+    );
+
+    if (promoted.isNotEmpty) {
+      _selection = promoted.first.id;
+      _selectedIds
+        ..clear()
+        ..add(_selection!);
+    } else {
+      _selection = null;
+      _selectedIds.clear();
+    }
+    _onProjectChanged();
+    return true;
+  }
+
+  void nudgeSelection(Offset delta) {
+    final selected =
+        _selectedIds.where((id) => id != 'root').toList(growable: false);
+    if (selected.isEmpty) {
+      return;
+    }
+    final worldDeltas = <String, Offset>{};
+    for (final id in selected) {
+      if (_isNodeLockedByAncestorsOrSelf(id)) {
+        continue;
+      }
+      worldDeltas[id] = delta;
+    }
+    _applyWorldDeltaAndCommit(
+      worldDeltas,
+      recordUndo: !_dragUndoTransactionActive,
+      recordUndoOnceInTransaction: _dragUndoTransactionActive,
+    );
+  }
+
+  void scaleSelection(double factor) {
+    final selectedId = _selection;
+    if (selectedId == null || selectedId == 'root') {
+      return;
+    }
+    if (_isNodeLockedByAncestorsOrSelf(selectedId)) {
+      return;
+    }
+    _pushLayerHistorySnapshot();
+    _project = _project.copyWith(
+      root: _mutateNode(
+        _project.root,
+        selectedId,
+        (node) => node.copyWith(
+          transform: node.transform.copyWith(
+            scale: (node.transform.scale * factor).clamp(0.1, 6.0),
+          ),
+        ),
+      ),
+    );
+    _onProjectChanged();
+  }
+
+  void rotateSelection(double deltaRadians) {
+    final selectedId = _selection;
+    if (selectedId == null || selectedId == 'root') {
+      return;
+    }
+    if (_isNodeLockedByAncestorsOrSelf(selectedId)) {
+      return;
+    }
+    _pushLayerHistorySnapshot();
+    _project = _project.copyWith(
+      root: _mutateNode(
+        _project.root,
+        selectedId,
+        (node) => node.copyWith(
+          transform: node.transform.copyWith(
+            rotation: node.transform.rotation + deltaRadians,
+          ),
+        ),
+      ),
+    );
+    _onProjectChanged();
+  }
+
+  void resetSelectionRotation() {
+    final selectedId = _selection;
+    if (selectedId == null || selectedId == 'root') {
+      return;
+    }
+    if (_isNodeLockedByAncestorsOrSelf(selectedId)) {
+      return;
+    }
+    _pushLayerHistorySnapshot();
+    _project = _project.copyWith(
+      root: _mutateNode(
+        _project.root,
+        selectedId,
+        (node) => node.copyWith(
+          transform: node.transform.copyWith(rotation: 0),
+        ),
+      ),
+    );
+    _onProjectChanged();
+  }
+
+  bool resetSelectionImageTransform() {
+    final selectedId = _selection;
+    if (selectedId == null || selectedId == 'root') {
+      return false;
+    }
+    final location = _findNodeLocation(selectedId);
+    if (location == null || location.node.type != NodeType.image) {
+      return false;
+    }
+    if (_isNodeLockedByAncestorsOrSelf(selectedId)) {
+      return false;
+    }
+
+    final size =
+        _resolveAssetSize(_resolveAssetAbsolutePath(location.node.asset));
+    final parentWorld = _resolveWorldTransform(location.parentId);
+    final centeredTransform = _buildCenteredLocalTransform(
+      size: size,
+      parentWorld: parentWorld,
+      canvas: _project.canvas,
+    );
+
+    _pushLayerHistorySnapshot();
+    _project = _project.copyWith(
+      root: _mutateNode(
+        _project.root,
+        selectedId,
+        (current) => current.copyWith(
+          transform: centeredTransform,
+          width: size.width,
+          height: size.height,
+        ),
+      ),
+    );
+    _onProjectChanged();
+    return true;
+  }
+
+  bool centerSelectionHorizontally() {
+    return _centerSelectionInCanvas(horizontal: true, vertical: false);
+  }
+
+  bool centerSelectionVertically() {
+    return _centerSelectionInCanvas(horizontal: false, vertical: true);
+  }
+
+  bool _centerSelectionInCanvas({
+    required bool horizontal,
+    required bool vertical,
+  }) {
+    final selectedId = _selection;
+    if (selectedId == null || selectedId == 'root') {
+      return false;
+    }
+    if (_isNodeLockedByAncestorsOrSelf(selectedId)) {
+      return false;
+    }
+
+    final info = _collectNodeWorldInfos({selectedId})[selectedId];
+    if (info == null) {
+      return false;
+    }
+
+    final canvasCenter = Offset(
+      _project.canvas.width / 2,
+      _project.canvas.height / 2,
+    );
+    final worldDelta = Offset(
+      horizontal ? canvasCenter.dx - info.bounds.center.dx : 0,
+      vertical ? canvasCenter.dy - info.bounds.center.dy : 0,
+    );
+    return _applyWorldDeltaAndCommit({selectedId: worldDelta},
+        recordUndo: true);
+  }
+
+  bool alignSelected(AlignAction action) {
+    final selected = _selectedIds.where((id) => id != 'root').toSet();
+    if (selected.length < 2) {
+      return false;
+    }
+    final infos = _collectNodeWorldInfos(selected);
+    final movable =
+        infos.values.where((info) => !info.lockedByAncestor).toList();
+    if (movable.length < 2) {
+      return false;
+    }
+
+    final deltas = <String, Offset>{};
+    final groupBounds = _unionBounds(movable.map((e) => e.bounds).toList());
+    if (groupBounds == null) {
+      return false;
+    }
+
+    if (action == AlignAction.distributeH) {
+      if (movable.length < 3) {
+        return false;
+      }
+      movable.sort((a, b) => a.bounds.left.compareTo(b.bounds.left));
+      final totalWidth = movable.fold<double>(
+        0,
+        (sum, e) => sum + e.bounds.width,
+      );
+      final span = movable.last.bounds.right - movable.first.bounds.left;
+      if (span <= 0 || totalWidth > span) {
+        return false;
+      }
+      final gap = (span - totalWidth) / (movable.length - 1);
+      var cursor = movable.first.bounds.right + gap;
+      for (var i = 1; i < movable.length - 1; i++) {
+        final item = movable[i];
+        final dx = cursor - item.bounds.left;
+        deltas[item.id] = Offset(dx, 0);
+        cursor += item.bounds.width + gap;
+      }
+      return _applyWorldDeltaAndCommit(deltas, recordUndo: true);
+    }
+
+    if (action == AlignAction.distributeV) {
+      if (movable.length < 3) {
+        return false;
+      }
+      movable.sort((a, b) => a.bounds.top.compareTo(b.bounds.top));
+      final totalHeight = movable.fold<double>(
+        0,
+        (sum, e) => sum + e.bounds.height,
+      );
+      final span = movable.last.bounds.bottom - movable.first.bounds.top;
+      if (span <= 0 || totalHeight > span) {
+        return false;
+      }
+      final gap = (span - totalHeight) / (movable.length - 1);
+      var cursor = movable.first.bounds.bottom + gap;
+      for (var i = 1; i < movable.length - 1; i++) {
+        final item = movable[i];
+        final dy = cursor - item.bounds.top;
+        deltas[item.id] = Offset(0, dy);
+        cursor += item.bounds.height + gap;
+      }
+      return _applyWorldDeltaAndCommit(deltas, recordUndo: true);
+    }
+
+    for (final info in movable) {
+      switch (action) {
+        case AlignAction.left:
+          deltas[info.id] = Offset(groupBounds.left - info.bounds.left, 0);
+          break;
+        case AlignAction.hCenter:
+          deltas[info.id] = Offset(
+            groupBounds.center.dx - info.bounds.center.dx,
+            0,
+          );
+          break;
+        case AlignAction.right:
+          deltas[info.id] = Offset(groupBounds.right - info.bounds.right, 0);
+          break;
+        case AlignAction.top:
+          deltas[info.id] = Offset(0, groupBounds.top - info.bounds.top);
+          break;
+        case AlignAction.vCenter:
+          deltas[info.id] = Offset(
+            0,
+            groupBounds.center.dy - info.bounds.center.dy,
+          );
+          break;
+        case AlignAction.bottom:
+          deltas[info.id] = Offset(0, groupBounds.bottom - info.bounds.bottom);
+          break;
+        case AlignAction.distributeH:
+        case AlignAction.distributeV:
+          break;
+      }
+    }
+    return _applyWorldDeltaAndCommit(deltas, recordUndo: true);
+  }
+
+  bool stretchSelectionToOutputSize() {
+    final selectedId = _selection;
+    if (selectedId == null || selectedId == 'root') {
+      return false;
+    }
+    final node = _findNodeById(_project.root, selectedId);
+    if (node == null) {
+      return false;
+    }
+    if (_isNodeLockedByAncestorsOrSelf(selectedId)) {
+      return false;
+    }
+
+    final canvas = _project.canvas;
+    if (node.isGroup) {
+      var stretchedCount = 0;
+
+      NodeModel stretchGroupLayers(NodeModel current,
+          {required bool ancestorLocked}) {
+        final locked = ancestorLocked || current.locked;
+        if (!current.isGroup) {
+          if (current.type != NodeType.image || locked) {
+            return current;
+          }
+          stretchedCount++;
+          return _stretchImageNodeToOutputSize(current, canvas);
+        }
+
+        var changed = false;
+        final updatedChildren = current.children.map((child) {
+          final updated = stretchGroupLayers(child, ancestorLocked: locked);
+          if (!identical(updated, child)) {
+            changed = true;
+          }
+          return updated;
+        }).toList(growable: false);
+        if (!changed) {
+          return current;
+        }
+        return current.copyWith(children: updatedChildren);
+      }
+
+      final nextRoot = _mutateNode(
+        _project.root,
+        selectedId,
+        (current) => stretchGroupLayers(current, ancestorLocked: false),
+      );
+      if (stretchedCount == 0) {
+        return false;
+      }
+      _pushLayerHistorySnapshot();
+      _project = _project.copyWith(root: nextRoot);
+      _onProjectChanged();
+      return true;
+    }
+    if (node.type != NodeType.image) {
+      return false;
+    }
+    _pushLayerHistorySnapshot();
+    _project = _project.copyWith(
+      root: _mutateNode(
+        _project.root,
+        selectedId,
+        (current) => _stretchImageNodeToOutputSize(current, canvas),
+      ),
+    );
+    _onProjectChanged();
+    return true;
+  }
+
+  NodeModel _stretchImageNodeToOutputSize(NodeModel node, CanvasModel canvas) {
+    return node.copyWith(
+      transform: node.transform.copyWith(
+        x: 0,
+        y: 0,
+        scale: 1,
+        rotation: 0,
+      ),
+      width: canvas.width,
+      height: canvas.height,
+    );
+  }
+}

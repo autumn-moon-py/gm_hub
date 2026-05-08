@@ -1,0 +1,10 @@
+{
+  "analysis_period_days": 120,
+  "stats": {
+    "total_commits": 0,
+    "total_authors": 0
+  },
+  "hotspots": [],
+  "coupling_pairs": [],
+  "note": "git analysis skipped: no .git metadata"
+}

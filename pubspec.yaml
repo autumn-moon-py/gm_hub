@@ -1,0 +1,50 @@
+name: gm_hub
+description: "A new Flutter project."
+publish_to: 'none'
+version: 1.0.0+1
+environment:
+  sdk: ^3.11.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  desktop_multi_window: ^0.2.1
+  file_selector: ^1.0.3
+  desktop_drop: ^0.5.0
+  get: ^4.7.2
+  image: ^4.2.0
+  audioplayers: ^6.0.0
+  path: ^1.9.1
+  appflowy_editor: ^6.2.0
+  appflowy_editor_plugins:
+    git:
+      url: https://github.com/AppFlowy-IO/AppFlowy-plugins.git
+      path: packages/appflowy_editor_plugins
+      ref: ca82890
+  markdown: ^7.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  inno_bundle: ^0.11.1
+
+dependency_overrides:
+  appflowy_editor: ^6.2.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/骰子.mp3
+
+inno_bundle:
+  id: d573f01a-9f0c-4111-b3b3-09864c488551
+  publisher: GM Hub
+  name: GM Hub
+  admin: false
+  arch: x64
+  installer_icon: windows/runner/resources/app_icon.ico
+  languages:
+    - english
