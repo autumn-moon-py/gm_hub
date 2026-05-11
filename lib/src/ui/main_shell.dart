@@ -111,12 +111,9 @@ class MainShellBody extends StatelessWidget {
           ],
         ),
         ListenableBuilder(
-          listenable: Listenable.merge(
-              [ui.dice.diceListenable, ui.audio.audioListenable]),
+          listenable: ui.layerTree.globalLoadingListenable,
           builder: (context, child) {
-            final loading = ui.dice.globalLoading ||
-                ui.audio.globalLoading ||
-                ui.layerTree.globalLoading;
+            final loading = ui.layerTree.globalLoading;
             if (!loading) {
               return const SizedBox.shrink();
             }
@@ -134,8 +131,6 @@ class MainShellBody extends StatelessWidget {
                     child: const Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        CircularProgressIndicator(),
-                        SizedBox(height: 12),
                         Text('资源处理中...'),
                       ],
                     ),

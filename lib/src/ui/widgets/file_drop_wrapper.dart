@@ -18,7 +18,7 @@ class FileDropWrapper extends StatelessWidget {
     return DropTarget(
       onDragDone: (details) {
         final paths = details.files.map((f) => f.path).toList();
-        facade.importDroppedImageFiles(paths);
+        facade.importDroppedFiles(paths);
       },
       child: child,
     );

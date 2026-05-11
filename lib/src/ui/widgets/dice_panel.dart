@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../store/project_store.dart';
 import '../facade/project_ui_facade.dart';
 import 'dice/dice_preset_button.dart';
 
@@ -17,6 +18,7 @@ class _DicePanelState extends State<DicePanel> {
   final TextEditingController _formulaController = TextEditingController();
   final TextEditingController _fateBonusController =
       TextEditingController(text: '0');
+  FateDiceModifierMode _fateModifierMode = FateDiceModifierMode.none;
   String _lastResult = '';
 
   @override
@@ -107,7 +109,8 @@ class _DicePanelState extends State<DicePanel> {
                           child: OutlinedButton(
                             onPressed: _rollFate,
                             style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(horizontal: 6),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 6),
                               minimumSize: Size.zero,
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               visualDensity: VisualDensity.compact,
@@ -180,31 +183,37 @@ class _DicePanelState extends State<DicePanel> {
                   ],
                 ),
                 const SizedBox(height: 0),
-                InkWell(
-                  onTap: () {
-                    widget.facade.setDarkDiceEnabled(!darkDiceEnabled);
-                    setState(() {});
-                  },
-                  borderRadius: BorderRadius.circular(6),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Checkbox(
-                        value: darkDiceEnabled,
-                        onChanged: (value) {
-                          widget.facade.setDarkDiceEnabled(value ?? false);
-                          setState(() {});
-                        },
-                        visualDensity: VisualDensity.compact,
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                Wrap(
+                  spacing: 4,
+                  runSpacing: 0,
+                  children: [
+                    _buildCompactCheckItem(
+                      label: '暗骰',
+                      value: darkDiceEnabled,
+                      onChanged: (value) {
+                        widget.facade.setDarkDiceEnabled(value);
+                        setState(() {});
+                      },
+                    ),
+                    _buildCompactCheckItem(
+                      label: '优势',
+                      value:
+                          _fateModifierMode == FateDiceModifierMode.advantage,
+                      onChanged: (value) => _setFateModifierMode(
+                        FateDiceModifierMode.advantage,
+                        value,
                       ),
-                      const SizedBox(width: 1),
-                      const Text(
-                        '暗骰',
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                    ),
+                    _buildCompactCheckItem(
+                      label: '劣势',
+                      value: _fateModifierMode ==
+                          FateDiceModifierMode.disadvantage,
+                      onChanged: (value) => _setFateModifierMode(
+                        FateDiceModifierMode.disadvantage,
+                        value,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 4),
                 ValueListenableBuilder<TextEditingValue>(
@@ -263,8 +272,8 @@ class _DicePanelState extends State<DicePanel> {
                   child: SelectableText(
                     _lastResult.isEmpty
                         ? (darkDiceEnabled
-                              ? '暗骰已开启，完整结果仅保留在骰子区。'
-                              : '投掷结果会输出到展示端。')
+                            ? '暗骰已开启，完整结果仅保留在骰子区。'
+                            : '投掷结果会输出到展示端。')
                         : _lastResult,
                     style: const TextStyle(fontSize: 12),
                   ),
@@ -304,9 +313,18 @@ class _DicePanelState extends State<DicePanel> {
 
   void _rollFate() {
     final bonus = int.tryParse(_fateBonusController.text.trim()) ?? 0;
-    final result = widget.facade.rollFateDice(bonus: bonus);
+    final result = widget.facade.rollFateDice(
+      bonus: bonus,
+      modifierMode: _fateModifierMode,
+    );
     setState(() {
       _lastResult = result;
+    });
+  }
+
+  void _setFateModifierMode(FateDiceModifierMode mode, bool enabled) {
+    setState(() {
+      _fateModifierMode = enabled ? mode : FateDiceModifierMode.none;
     });
   }
 
@@ -350,6 +368,33 @@ class _DicePanelState extends State<DicePanel> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildCompactCheckItem({
+    required String label,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return InkWell(
+      onTap: () => onChanged(!value),
+      borderRadius: BorderRadius.circular(6),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Checkbox(
+            value: value,
+            onChanged: (next) => onChanged(next ?? false),
+            visualDensity: VisualDensity.compact,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          const SizedBox(width: 1),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+          ),
+        ],
       ),
     );
   }

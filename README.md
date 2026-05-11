@@ -41,7 +41,10 @@ GM Hub 是一个面向 TRPG 主持人的 Windows 桌面主控台：
 - `lib/src/controller/`：主控逻辑与输出同步调度
 - `lib/src/output*`：输出窗口渲染与同步解析
 - `windows/runner/`：Windows 原生宿主入口
-- `.nexus-map/`：项目结构知识库（供 AI/开发快速定位）
+- `.nexus-map/`：面向 AI/开发的项目知识库
+  - `START.md`：最快入口
+  - `INDEX.md`：完整索引
+  - `overview/ architecture/ domains/ tasks/ risks/ evidence/ models/`：按摘要、架构、任务、风险、证据和机器模型分层组织
 
 ## 运行（Windows）
 

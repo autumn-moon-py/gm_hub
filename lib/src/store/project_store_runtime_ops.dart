@@ -126,8 +126,16 @@ extension ProjectStoreRuntimeOps on ProjectStore {
     return _runtime.rollPresetDice(sides);
   }
 
-  String rollFateDice({int count = 4, int bonus = 0}) {
-    return _runtime.rollFateDice(count: count, bonus: bonus);
+  String rollFateDice({
+    int count = 4,
+    int bonus = 0,
+    FateDiceModifierMode modifierMode = FateDiceModifierMode.none,
+  }) {
+    return _runtime.rollFateDice(
+      count: count,
+      bonus: bonus,
+      modifierMode: modifierMode,
+    );
   }
 
   void setTrack(String? trackId) {

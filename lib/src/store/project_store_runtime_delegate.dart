@@ -185,11 +185,29 @@ class _ProjectRuntimeDelegate {
     return rollDice('1d$sides');
   }
 
-  String rollFateDice({int count = 4, int bonus = 0}) {
+  String rollFateDice({
+    int count = 4,
+    int bonus = 0,
+    FateDiceModifierMode modifierMode = FateDiceModifierMode.none,
+  }) {
     final diceCount = count <= 0 ? 4 : count;
     final rolls = List<int>.generate(diceCount, (_) => _random.nextInt(3) - 1);
     final baseTotal = rolls.fold<int>(0, (sum, value) => sum + value);
-    final totalResult = baseTotal + bonus;
+    int? modifierRoll;
+    var modifierDelta = 0;
+    switch (modifierMode) {
+      case FateDiceModifierMode.none:
+        break;
+      case FateDiceModifierMode.advantage:
+        modifierRoll = _random.nextInt(2) + 1;
+        modifierDelta = modifierRoll;
+        break;
+      case FateDiceModifierMode.disadvantage:
+        modifierRoll = _random.nextInt(2) + 1;
+        modifierDelta = -modifierRoll;
+        break;
+    }
+    final totalResult = baseTotal + bonus + modifierDelta;
 
     String valueLabel(int value) {
       if (value > 0) {
@@ -228,12 +246,30 @@ class _ProjectRuntimeDelegate {
 
     final diceText = rolls.map(valueLabel).join(', ');
     final summary = '掷出了 命运骰=$totalResult';
-    final addSymbol = bonus >= 0 ? '+' : '-';
-    final absBonus = bonus.abs();
+    final bonusText = '数值加值: ${bonus >= 0 ? '+' : '-'}${bonus.abs()}';
+    String modifierText;
+    if (modifierMode == FateDiceModifierMode.advantage) {
+      modifierText = '额外修正: 优势 d2=$modifierRoll';
+    } else if (modifierMode == FateDiceModifierMode.disadvantage) {
+      modifierText = '额外修正: 劣势 d2=$modifierRoll';
+    } else {
+      modifierText = '额外修正: 无';
+    }
+    final totalSegments = <String>[baseTotal.toString()];
+    if (bonus != 0) {
+      totalSegments.add('${bonus >= 0 ? '+' : '-'} ${bonus.abs()}');
+    }
+    if (modifierRoll != null) {
+      final sign = modifierMode == FateDiceModifierMode.advantage ? '+' : '-';
+      totalSegments.add('$sign $modifierRoll');
+    }
+    final totalLine = '总结果: ${totalSegments.join(' ')} = $totalResult';
     final detailed = [
       summary,
       '本次结果: [$diceText]',
-      '总结果: $baseTotal $addSymbol $absBonus = $totalResult',
+      bonusText,
+      modifierText,
+      totalLine,
       'CoC判定: $cocDifficulty',
       '标记血量: $hpMark',
     ].join('\n');
@@ -245,9 +281,7 @@ class _ProjectRuntimeDelegate {
     required String summary,
     required String detailed,
   }) {
-    final flowText = _darkDiceEnabled
-        ? '黑暗的角落里，传来命运转动的声音'
-        : summary;
+    final flowText = _darkDiceEnabled ? '黑暗的角落里，传来命运转动的声音' : summary;
     async_lib.unawaited(_playDiceSound());
     pushFlowMessage(flowText, color: const Color(0xFFFFF59D));
   }
@@ -257,7 +291,8 @@ class _ProjectRuntimeDelegate {
       await _diceAudioPlayer.stop();
       await _diceAudioPlayer.setReleaseMode(ReleaseMode.stop);
       await _diceAudioPlayer.setVolume(0.35);
-      await _diceAudioPlayer.play(AssetSource('骰子.mp3'), mode: PlayerMode.lowLatency);
+      await _diceAudioPlayer.play(AssetSource('骰子.mp3'),
+          mode: PlayerMode.lowLatency);
     } catch (_) {
       // 骰子音效失败不影响主流程。
     }
@@ -301,7 +336,8 @@ class _ProjectRuntimeDelegate {
       final nextPath = await _store._fileService.importAudioFile(file.path);
       final nextTracks = _store._project.tracks
           .map(
-            (item) => item.id == trackId ? item.copyWith(asset: nextPath) : item,
+            (item) =>
+                item.id == trackId ? item.copyWith(asset: nextPath) : item,
           )
           .toList();
       _store._project = _store._project.copyWith(tracks: nextTracks);

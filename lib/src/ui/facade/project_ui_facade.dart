@@ -59,6 +59,7 @@ class StageEditorFacade {
   Set<String> get selectedIds => _store.selectedIds;
   NodeModel? get selectedNode => _store.selectedNode;
   List<FlowMessageItem> get flowMessages => _store.flowMessages;
+  Listenable get globalLoadingListenable => _store.globalLoadingListenable;
 
   void selectNode(String id) => _store.selectNode(id);
   void clearSelection() => _store.clearSelection();
@@ -136,9 +137,18 @@ class LayerTreeFacade {
   NotesEditorViewState get notesEditorViewState => _notesEditorViewState;
   String? get rangeSelectionAnchorId => _rangeSelectionAnchorId;
   bool get globalLoading => _store.globalLoading;
+  Listenable get globalLoadingListenable => _store.globalLoadingListenable;
 
-  void selectNode(String id) => _store.selectNode(id);
-  void clearSelection() => _store.clearSelection();
+  void selectNode(String id) {
+    _store.selectNode(id);
+    _rangeSelectionAnchorId = id;
+  }
+
+  void clearSelection() {
+    _store.clearSelection();
+    _rangeSelectionAnchorId = null;
+  }
+
   void selectNodeRange(String id, List<String> orderedNodeIds) {
     if (orderedNodeIds.isEmpty) {
       selectNode(id);
@@ -155,8 +165,11 @@ class LayerTreeFacade {
     }
     final start = anchorIndex < targetIndex ? anchorIndex : targetIndex;
     final end = anchorIndex > targetIndex ? anchorIndex : targetIndex;
-    _store.selectNodeRange(orderedNodeIds.sublist(start, end + 1),
-        primaryId: id);
+    _store.selectNodeRange(
+      orderedNodeIds.sublist(start, end + 1),
+      primaryId: id,
+    );
+    _rangeSelectionAnchorId = anchorId;
   }
 
   void toggleMultiSelect(String id) {
@@ -226,6 +239,8 @@ class LayerTreeFacade {
   }
 
   async_lib.Future<void> addImageLayer() => _store.addImageLayer();
+  async_lib.Future<void> importDroppedFiles(List<String> paths) =>
+      _store.importDroppedFiles(paths);
   async_lib.Future<void> importDroppedImageFiles(List<String> paths) =>
       _store.importDroppedImageFiles(paths);
   void addTextLayer() => _store.addTextLayer();
@@ -248,6 +263,7 @@ class AudioControlFacade {
   List<AudioTrackModel> get tracks => _store.project.tracks;
   String? get audioError => _store.audioError;
   bool get globalLoading => _store.globalLoading;
+  Listenable get globalLoadingListenable => _store.globalLoadingListenable;
 
   void setTrack(String? trackId) => _store.setTrack(trackId);
   bool isTrackAssetMissing(String trackId) =>
@@ -280,10 +296,15 @@ class DiceControlFacade {
   bool get dicePanelCollapsed => _store.dicePanelCollapsed;
   bool get darkDiceEnabled => _store.darkDiceEnabled;
   bool get globalLoading => _store.globalLoading;
+  Listenable get globalLoadingListenable => _store.globalLoadingListenable;
   void toggleDicePanelCollapsed() => _store.toggleDicePanelCollapsed();
   void setDarkDiceEnabled(bool enabled) => _store.setDarkDiceEnabled(enabled);
   String rollDice(String expression) => _store.rollDice(expression);
   String rollPresetDice(int sides) => _store.rollPresetDice(sides);
-  String rollFateDice({int bonus = 0}) => _store.rollFateDice(bonus: bonus);
+  String rollFateDice({
+    int bonus = 0,
+    FateDiceModifierMode modifierMode = FateDiceModifierMode.none,
+  }) =>
+      _store.rollFateDice(bonus: bonus, modifierMode: modifierMode);
   void clearFlowMessages() => _store.clearFlowMessages();
 }

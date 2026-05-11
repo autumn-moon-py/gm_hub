@@ -236,7 +236,10 @@ class _OutputWindowAppState extends State<OutputWindowApp> {
                             layout.offsetY +
                             item.worldPosition.dy * layout.renderScaleY,
                         child: Opacity(
-                          opacity: item.opacity.clamp(0.0, 1.0),
+                          opacity: (item.visible ? item.opacity : 0.0).clamp(
+                            0.0,
+                            1.0,
+                          ),
                           child: Transform.rotate(
                             angle: item.worldRotation,
                             alignment: Alignment.center,

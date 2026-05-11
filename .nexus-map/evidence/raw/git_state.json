@@ -1,0 +1,23 @@
+{
+  "rebuilt_at": "2026-05-08",
+  "is_git_repo": true,
+  "branch": "main",
+  "remote": {
+    "name": "origin",
+    "fetch": "https://github.com/autumn-moon-py/gm_hub.git",
+    "push": "https://github.com/autumn-moon-py/gm_hub.git"
+  },
+  "history": {
+    "commit_count": 1,
+    "latest_commit": {
+      "hash": "e895744952604fb9334d4856118cfe6bce76d90f",
+      "date": "2026-05-08",
+      "subject": "初次提交"
+    }
+  },
+  "limits": {
+    "supports_hotspot_analysis": false,
+    "supports_coupling_analysis": false,
+    "reason": "commit history is too shallow"
+  }
+}

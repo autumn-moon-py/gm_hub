@@ -1,7 +1,108 @@
 part of 'project_store.dart';
 
 extension ProjectStoreProjectOps on ProjectStore {
+  static const List<String> _imageExtensions = [
+    '.png',
+    '.jpg',
+    '.jpeg',
+    '.webp',
+    '.bmp',
+  ];
+  static const List<String> _audioExtensions = ['.mp3'];
+
   bool isGroupCollapsed(String nodeId) => _collapsedGroupIds.contains(nodeId);
+
+  bool _isSupportedImageExtension(String ext) {
+    return _imageExtensions.contains(ext.toLowerCase());
+  }
+
+  bool _isSupportedAudioExtension(String ext) {
+    return _audioExtensions.contains(ext.toLowerCase());
+  }
+
+  Future<List<NodeModel>> _buildImageNodesFromPaths(
+    List<String> paths, {
+    required _NodeWorldTransform parentWorld,
+  }) async {
+    final nodes = <NodeModel>[];
+    for (final path in paths) {
+      final relPath = await _fileService.importImageFile(path);
+      final absPath = _resolveAssetAbsolutePath(relPath);
+      final size = await _resolveAssetSizeAsync(absPath);
+      final name = p.basenameWithoutExtension(path);
+      nodes.add(
+        NodeModel(
+          id: _nextId('img'),
+          type: NodeType.image,
+          name: name,
+          visible: true,
+          locked: false,
+          opacity: 1,
+          transform: _buildCenteredLocalTransform(
+            size: size,
+            parentWorld: parentWorld,
+            canvas: _project.canvas,
+          ),
+          asset: relPath,
+        ),
+      );
+    }
+    return nodes;
+  }
+
+  Future<List<AudioTrackModel>> _buildTracksFromPaths(
+      List<String> paths) async {
+    final tracks = <AudioTrackModel>[];
+    for (final path in paths) {
+      final relPath = await _fileService.importAudioFile(path);
+      tracks.add(
+        AudioTrackModel(
+          id: _nextId('track'),
+          name: p.basenameWithoutExtension(path),
+          asset: relPath,
+        ),
+      );
+    }
+    return tracks;
+  }
+
+  void _appendImageNodes({
+    required String parentId,
+    required List<NodeModel> nodes,
+  }) {
+    if (nodes.isEmpty) {
+      return;
+    }
+    _pushLayerHistorySnapshot();
+    _assetSizeCache.clear();
+    _project = _project.copyWith(
+      root: _mutateChildrenOfParent(
+        _project.root,
+        parentId,
+        (children) => [...children, ...nodes],
+      ),
+    );
+    final last = nodes.last;
+    _selection = last.id;
+    _selectedIds
+      ..clear()
+      ..add(last.id);
+  }
+
+  void _appendAudioTracks(List<AudioTrackModel> tracks) {
+    if (tracks.isEmpty) {
+      return;
+    }
+    final currentTrack = tracks.last;
+    _project = _project.copyWith(
+      tracks: [..._project.tracks, ...tracks],
+      audioState: _project.audioState.copyWith(
+        currentTrackId: currentTrack.id,
+        isPlaying: false,
+      ),
+    );
+    _setAudioError(null);
+  }
 
   void _restoreStoredUiState() {
     final uiState = _project.uiState;
@@ -217,42 +318,11 @@ extension ProjectStoreProjectOps on ProjectStore {
       }
       final parentId = _resolveInsertParentId();
       final parentWorld = _resolveWorldTransform(parentId);
-      final nodes = <NodeModel>[];
-      for (final file in files) {
-        final relPath = await _fileService.importImageFile(file.path);
-        final absPath = _resolveAssetAbsolutePath(relPath);
-        final size = _resolveAssetSize(absPath);
-        nodes.add(
-          NodeModel(
-            id: _nextId('img'),
-            type: NodeType.image,
-            name: p.basenameWithoutExtension(file.name),
-            visible: true,
-            locked: false,
-            opacity: 1,
-            transform: _buildCenteredLocalTransform(
-              size: size,
-              parentWorld: parentWorld,
-              canvas: _project.canvas,
-            ),
-            asset: relPath,
-          ),
-        );
-      }
-      _pushLayerHistorySnapshot();
-      _assetSizeCache.clear();
-      _project = _project.copyWith(
-        root: _mutateChildrenOfParent(
-          _project.root,
-          parentId,
-          (children) => [...children, ...nodes],
-        ),
+      final nodes = await _buildImageNodesFromPaths(
+        files.map((file) => file.path).toList(growable: false),
+        parentWorld: parentWorld,
       );
-      final last = nodes.last;
-      _selection = last.id;
-      _selectedIds
-        ..clear()
-        ..add(last.id);
+      _appendImageNodes(parentId: parentId, nodes: nodes);
       _onProjectChanged();
     });
   }
@@ -260,56 +330,55 @@ extension ProjectStoreProjectOps on ProjectStore {
   async_lib.Future<void> importDroppedImageFiles(List<String> paths) async {
     await runWithGlobalLoading(() async {
       final validPaths = paths.where((path) {
-        final ext = path.toLowerCase();
-        return ext.endsWith('.png') ||
-            ext.endsWith('.jpg') ||
-            ext.endsWith('.jpeg') ||
-            ext.endsWith('.webp') ||
-            ext.endsWith('.bmp');
-      }).toList();
+        return _isSupportedImageExtension(p.extension(path));
+      }).toList(growable: false);
       if (validPaths.isEmpty) {
         return;
       }
       final parentId = _resolveInsertParentId();
       final parentWorld = _resolveWorldTransform(parentId);
-      final nodes = <NodeModel>[];
-      for (final path in validPaths) {
-        final relPath = await _fileService.importImageFile(path);
-        final absPath = _resolveAssetAbsolutePath(relPath);
-        final size = _resolveAssetSize(absPath);
-        final name = p.basenameWithoutExtension(path);
-        nodes.add(
-          NodeModel(
-            id: _nextId('img'),
-            type: NodeType.image,
-            name: name,
-            visible: true,
-            locked: false,
-            opacity: 1,
-            transform: _buildCenteredLocalTransform(
-              size: size,
-              parentWorld: parentWorld,
-              canvas: _project.canvas,
-            ),
-            asset: relPath,
-          ),
-        );
-      }
-      _pushLayerHistorySnapshot();
-      _assetSizeCache.clear();
-      _project = _project.copyWith(
-        root: _mutateChildrenOfParent(
-          _project.root,
-          parentId,
-          (children) => [...children, ...nodes],
-        ),
+      final nodes = await _buildImageNodesFromPaths(
+        validPaths,
+        parentWorld: parentWorld,
       );
-      final last = nodes.last;
-      _selection = last.id;
-      _selectedIds
-        ..clear()
-        ..add(last.id);
+      _appendImageNodes(parentId: parentId, nodes: nodes);
       _onProjectChanged();
+    });
+  }
+
+  async_lib.Future<void> importDroppedFiles(List<String> paths) async {
+    await runWithGlobalLoading(() async {
+      final imagePaths = <String>[];
+      final audioPaths = <String>[];
+      for (final path in paths) {
+        final ext = p.extension(path);
+        if (_isSupportedImageExtension(ext)) {
+          imagePaths.add(path);
+          continue;
+        }
+        if (_isSupportedAudioExtension(ext)) {
+          audioPaths.add(path);
+        }
+      }
+      var changed = false;
+      if (imagePaths.isNotEmpty) {
+        final parentId = _resolveInsertParentId();
+        final parentWorld = _resolveWorldTransform(parentId);
+        final nodes = await _buildImageNodesFromPaths(
+          imagePaths,
+          parentWorld: parentWorld,
+        );
+        _appendImageNodes(parentId: parentId, nodes: nodes);
+        changed = changed || nodes.isNotEmpty;
+      }
+      if (audioPaths.isNotEmpty) {
+        final tracks = await _buildTracksFromPaths(audioPaths);
+        _appendAudioTracks(tracks);
+        changed = changed || tracks.isNotEmpty;
+      }
+      if (changed) {
+        _onProjectChanged();
+      }
     });
   }
 
@@ -323,26 +392,10 @@ extension ProjectStoreProjectOps on ProjectStore {
       if (files.isEmpty) {
         return;
       }
-      final tracks = <AudioTrackModel>[];
-      for (final file in files) {
-        final relPath = await _fileService.importAudioFile(file.path);
-        tracks.add(
-          AudioTrackModel(
-            id: _nextId('track'),
-            name: p.basenameWithoutExtension(file.name),
-            asset: relPath,
-          ),
-        );
-      }
-      final currentTrack = tracks.last;
-      _project = _project.copyWith(
-        tracks: [..._project.tracks, ...tracks],
-        audioState: _project.audioState.copyWith(
-          currentTrackId: currentTrack.id,
-          isPlaying: false,
-        ),
+      final tracks = await _buildTracksFromPaths(
+        files.map((file) => file.path).toList(growable: false),
       );
-      _setAudioError(null);
+      _appendAudioTracks(tracks);
       _onProjectChanged();
     });
   }
@@ -451,19 +504,53 @@ extension ProjectStoreProjectOps on ProjectStore {
     );
   }
 
+  bool _isBackgroundImageNodeId(String id) {
+    final backgroundGroup = _findNodeById(_project.root, 'group_background');
+    if (backgroundGroup == null || !backgroundGroup.isGroup) {
+      return false;
+    }
+    for (final child in backgroundGroup.children) {
+      if (child.id == id && child.type == NodeType.image) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   void toggleNodeVisible(String id) {
-    if (_findNodeById(_project.root, id) == null) {
+    final target = _findNodeById(_project.root, id);
+    if (target == null) {
       return;
     }
     _pushLayerHistorySnapshot();
-    _project = _project.copyWith(
-      root: _mutateNode(
-        _project.root,
-        id,
-        (node) => node.copyWith(visible: !node.visible),
-      ),
-    );
-    _notifyNodeDataListeners([id]);
+    final nodeIdsToNotify = <String>{id};
+    if (_isBackgroundImageNodeId(id) && !target.visible) {
+      _project = _project.copyWith(
+        root: _mutateNode(
+          _project.root,
+          'group_background',
+          (node) {
+            final updatedChildren = node.children.map((child) {
+              if (child.type != NodeType.image) {
+                return child;
+              }
+              nodeIdsToNotify.add(child.id);
+              return child.copyWith(visible: child.id == id);
+            }).toList(growable: false);
+            return node.copyWith(children: updatedChildren);
+          },
+        ),
+      );
+    } else {
+      _project = _project.copyWith(
+        root: _mutateNode(
+          _project.root,
+          id,
+          (node) => node.copyWith(visible: !node.visible),
+        ),
+      );
+    }
+    _notifyNodeDataListeners(nodeIdsToNotify);
     _onProjectChanged(
       notifyController: true,
       notifyStage: true,

@@ -4,7 +4,9 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:file_selector/file_selector.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:image/image.dart' as img;
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path/path.dart' as p;
@@ -31,6 +33,12 @@ enum AlignAction {
   bottom,
   distributeH,
   distributeV,
+}
+
+enum FateDiceModifierMode {
+  none,
+  advantage,
+  disadvantage,
 }
 
 class FlowMessageItem {
@@ -85,6 +93,7 @@ class ProjectStore extends ChangeNotifier {
   final ChangeNotifier _audioNotifier = ChangeNotifier();
   final ChangeNotifier _diceNotifier = ChangeNotifier();
   final ChangeNotifier _transformNotifier = ChangeNotifier();
+  final ChangeNotifier _globalLoadingNotifier = ChangeNotifier();
   final Map<String, ChangeNotifier> _nodeSelectionNotifiers =
       <String, ChangeNotifier>{};
   final Map<String, ChangeNotifier> _nodeDataNotifiers =
@@ -115,6 +124,10 @@ class ProjectStore extends ChangeNotifier {
   static const int _audioFadeSteps = 8;
   static const Duration _audioFadeTotalDuration = Duration(seconds: 3);
   static const int _maxLayerUndoEntries = 100;
+  static const Duration _globalLoadingMinVisibleDuration =
+      Duration(milliseconds: 180);
+
+  DateTime? _globalLoadingVisibleSince;
 
   ProjectModel get project => _project;
   String? get projectFilePath => _projectFilePath;
@@ -138,6 +151,7 @@ class ProjectStore extends ChangeNotifier {
   bool get globalLoading => _globalLoadingCount > 0;
   List<FlowMessageItem> get flowMessages => _runtime.flowMessages;
   Set<String> get selectedIds => _selectedIdsView;
+  Listenable get globalLoadingListenable => _globalLoadingNotifier;
   Listenable get selectionListenable => _selectionNotifier;
   Listenable get stageListenable => _stageNotifier;
   Listenable get layerTreeListenable => _layerTreeNotifier;
@@ -321,41 +335,40 @@ class ProjectStore extends ChangeNotifier {
   void _pushGlobalLoading() {
     _globalLoadingCount += 1;
     if (_globalLoadingCount == 1) {
-      _notifyStoreListeners(
-        notifyController: false,
-        notifyStage: false,
-        notifyLayerTree: false,
-        notifyAudio: false,
-        notifyDice: true,
-        notifyTransform: false,
-      );
+      _globalLoadingVisibleSince = DateTime.now();
+      _globalLoadingNotifier.notifyListeners();
     }
   }
 
-  void _popGlobalLoading() {
+  Future<void> _popGlobalLoading() async {
     if (_globalLoadingCount <= 0) {
       _globalLoadingCount = 0;
       return;
     }
-    _globalLoadingCount -= 1;
-    if (_globalLoadingCount == 0) {
-      _notifyStoreListeners(
-        notifyController: false,
-        notifyStage: false,
-        notifyLayerTree: false,
-        notifyAudio: false,
-        notifyDice: true,
-        notifyTransform: false,
-      );
+    if (_globalLoadingCount == 1) {
+      final visibleSince = _globalLoadingVisibleSince;
+      if (visibleSince != null) {
+        final elapsed = DateTime.now().difference(visibleSince);
+        final remaining = _globalLoadingMinVisibleDuration - elapsed;
+        if (remaining > Duration.zero) {
+          await async_lib.Future<void>.delayed(remaining);
+        }
+      }
+      _globalLoadingCount = 0;
+      _globalLoadingVisibleSince = null;
+      _globalLoadingNotifier.notifyListeners();
+      return;
     }
+    _globalLoadingCount -= 1;
   }
 
   Future<T> runWithGlobalLoading<T>(Future<T> Function() action) async {
     _pushGlobalLoading();
     try {
+      await SchedulerBinding.instance.endOfFrame;
       return await action();
     } finally {
-      _popGlobalLoading();
+      await _popGlobalLoading();
     }
   }
 
@@ -374,6 +387,7 @@ class ProjectStore extends ChangeNotifier {
     _audioNotifier.dispose();
     _diceNotifier.dispose();
     _transformNotifier.dispose();
+    _globalLoadingNotifier.dispose();
     _runtime.dispose();
     super.dispose();
   }
@@ -402,6 +416,37 @@ class ProjectStore extends ChangeNotifier {
         return fallback;
       }
       final size = Size(decoded.width.toDouble(), decoded.height.toDouble());
+      _assetSizeCache[path] = size;
+      return size;
+    } catch (_) {
+      _assetSizeCache[path] = fallback;
+      return fallback;
+    }
+  }
+
+  Future<Size> _resolveAssetSizeAsync(String? assetAbsolutePath) async {
+    const fallback = Size(220, 140);
+    final path = assetAbsolutePath;
+    if (path == null || path.isEmpty) {
+      return fallback;
+    }
+    final cached = _assetSizeCache[path];
+    if (cached != null) {
+      return cached;
+    }
+    final file = File(path);
+    if (!file.existsSync()) {
+      _assetSizeCache[path] = fallback;
+      return fallback;
+    }
+    try {
+      final bytes = await file.readAsBytes();
+      final dimensions = await compute(_decodeImageDimensions, bytes);
+      if (dimensions == null || dimensions.length != 2) {
+        _assetSizeCache[path] = fallback;
+        return fallback;
+      }
+      final size = Size(dimensions[0].toDouble(), dimensions[1].toDouble());
       _assetSizeCache[path] = size;
       return size;
     } catch (_) {
@@ -447,6 +492,14 @@ class ProjectStore extends ChangeNotifier {
       (painter.height + _textDragHandleHeight + 10).clamp(30, 900),
     );
   }
+}
+
+List<int>? _decodeImageDimensions(Uint8List bytes) {
+  final decoded = img.decodeImage(bytes);
+  if (decoded == null || decoded.width <= 0 || decoded.height <= 0) {
+    return null;
+  }
+  return [decoded.width, decoded.height];
 }
 
 class _NodeLocation {

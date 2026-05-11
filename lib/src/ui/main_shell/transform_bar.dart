@@ -21,7 +21,8 @@ class TransformBar extends StatelessWidget {
         facade.selectionListenable,
       ]),
       builder: (context, child) {
-        final selectedCount = facade.selectedIds.where((id) => id != 'root').length;
+        final selectedCount =
+            facade.selectedIds.where((id) => id != 'root').length;
         if (selectedCount > 1) {
           return _buildMultiSelectionBar(selectedCount: selectedCount);
         }
@@ -102,6 +103,17 @@ class TransformBar extends StatelessWidget {
               tooltip: '纵向分布',
               icon: Icons.swap_vert,
               onPressed: facade.distributeV,
+            ),
+            const SizedBox(width: 4),
+            _alignBtn(
+              tooltip: '水平居中到画布',
+              icon: Icons.view_week,
+              onPressed: facade.centerSelectionHorizontally,
+            ),
+            _alignBtn(
+              tooltip: '垂直居中到画布',
+              icon: Icons.view_agenda,
+              onPressed: facade.centerSelectionVertically,
             ),
           ],
         ),

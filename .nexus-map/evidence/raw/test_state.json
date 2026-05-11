@@ -1,0 +1,14 @@
+{
+  "rebuilt_at": "2026-05-08",
+  "directories": {
+    "test": false,
+    "integration_test": false
+  },
+  "pubspec": {
+    "flutter_test_dependency": true
+  },
+  "summary": {
+    "automated_tests_present": false,
+    "executed_test_results_available": false
+  }
+}

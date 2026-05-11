@@ -386,16 +386,21 @@ extension ProjectStoreNodeOps on ProjectStore {
     required bool horizontal,
     required bool vertical,
   }) {
-    final selectedId = _selection;
-    if (selectedId == null || selectedId == 'root') {
+    final selected = _selectedIds.where((id) => id != 'root').toSet();
+    if (selected.isEmpty) {
       return false;
     }
-    if (_isNodeLockedByAncestorsOrSelf(selectedId)) {
+    final infos = _collectNodeWorldInfos(selected);
+    final movable =
+        infos.values.where((info) => !info.lockedByAncestor).toList();
+    if (movable.isEmpty) {
       return false;
     }
 
-    final info = _collectNodeWorldInfos({selectedId})[selectedId];
-    if (info == null) {
+    final targetBounds = selected.length == 1
+        ? movable.first.bounds
+        : _unionBounds(movable.map((info) => info.bounds).toList());
+    if (targetBounds == null) {
       return false;
     }
 
@@ -404,11 +409,13 @@ extension ProjectStoreNodeOps on ProjectStore {
       _project.canvas.height / 2,
     );
     final worldDelta = Offset(
-      horizontal ? canvasCenter.dx - info.bounds.center.dx : 0,
-      vertical ? canvasCenter.dy - info.bounds.center.dy : 0,
+      horizontal ? canvasCenter.dx - targetBounds.center.dx : 0,
+      vertical ? canvasCenter.dy - targetBounds.center.dy : 0,
     );
-    return _applyWorldDeltaAndCommit({selectedId: worldDelta},
-        recordUndo: true);
+    final deltas = <String, Offset>{
+      for (final info in movable) info.id: worldDelta,
+    };
+    return _applyWorldDeltaAndCommit(deltas, recordUndo: true);
   }
 
   bool alignSelected(AlignAction action) {
@@ -439,12 +446,13 @@ extension ProjectStoreNodeOps on ProjectStore {
         (sum, e) => sum + e.bounds.width,
       );
       final span = movable.last.bounds.right - movable.first.bounds.left;
-      if (span <= 0 || totalWidth > span) {
+      if (span <= 0) {
         return false;
       }
-      final gap = (span - totalWidth) / (movable.length - 1);
-      var cursor = movable.first.bounds.right + gap;
-      for (var i = 1; i < movable.length - 1; i++) {
+      final gap = math.max(0.0, (span - totalWidth) / (movable.length - 1));
+      final packedWidth = totalWidth + gap * (movable.length - 1);
+      var cursor = groupBounds.left + (groupBounds.width - packedWidth) / 2;
+      for (var i = 0; i < movable.length; i++) {
         final item = movable[i];
         final dx = cursor - item.bounds.left;
         deltas[item.id] = Offset(dx, 0);
@@ -463,12 +471,13 @@ extension ProjectStoreNodeOps on ProjectStore {
         (sum, e) => sum + e.bounds.height,
       );
       final span = movable.last.bounds.bottom - movable.first.bounds.top;
-      if (span <= 0 || totalHeight > span) {
+      if (span <= 0) {
         return false;
       }
-      final gap = (span - totalHeight) / (movable.length - 1);
-      var cursor = movable.first.bounds.bottom + gap;
-      for (var i = 1; i < movable.length - 1; i++) {
+      final gap = math.max(0.0, (span - totalHeight) / (movable.length - 1));
+      final packedHeight = totalHeight + gap * (movable.length - 1);
+      var cursor = groupBounds.top + (groupBounds.height - packedHeight) / 2;
+      for (var i = 0; i < movable.length; i++) {
         final item = movable[i];
         final dy = cursor - item.bounds.top;
         deltas[item.id] = Offset(0, dy);

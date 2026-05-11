@@ -1,0 +1,70 @@
+{
+  "rebuilt_at": "2026-05-08",
+  "lib_dart_files": {
+    "entry": [
+      "lib/main.dart",
+      "lib/src/app.dart",
+      "lib/src/output_window_app.dart"
+    ],
+    "router": [
+      "lib/src/router/app_pages.dart",
+      "lib/src/router/app_routes.dart"
+    ],
+    "controller": [
+      "lib/src/controller/project_controller.dart"
+    ],
+    "model": [
+      "lib/src/model/project_model.dart",
+      "lib/src/model/render_item.dart"
+    ],
+    "store": [
+      "lib/src/store/project_store.dart",
+      "lib/src/store/project_store_geometry_ops.dart",
+      "lib/src/store/project_store_node_ops.dart",
+      "lib/src/store/project_store_project_ops.dart",
+      "lib/src/store/project_store_runtime_delegate.dart",
+      "lib/src/store/project_store_runtime_ops.dart",
+      "lib/src/store/project_store_tree_ops.dart",
+      "lib/src/store/project_file_service.dart"
+    ],
+    "output": [
+      "lib/src/output/output_layout.dart",
+      "lib/src/output/output_render_tile.dart",
+      "lib/src/output/output_sync_parser.dart",
+      "lib/src/output/output_sync_state.dart",
+      "lib/src/output/sync_render_payload.dart"
+    ],
+    "render": [
+      "lib/src/render/render_color.dart",
+      "lib/src/render/render_item_content.dart"
+    ],
+    "ui": [
+      "lib/src/ui/facade/project_ui_facade.dart",
+      "lib/src/ui/main_shell.dart",
+      "lib/src/ui/main_shell/main_shell_actions.dart",
+      "lib/src/ui/main_shell/main_shell_app_bar.dart",
+      "lib/src/ui/main_shell/stage_content.dart",
+      "lib/src/ui/main_shell/transform_bar.dart",
+      "lib/src/ui/widgets/bgm_panel.dart",
+      "lib/src/ui/widgets/dice_panel.dart",
+      "lib/src/ui/widgets/file_drop_wrapper.dart",
+      "lib/src/ui/widgets/flow_message_panel.dart",
+      "lib/src/ui/widgets/layer_tree_actions.dart",
+      "lib/src/ui/widgets/layer_tree_drop_strip.dart",
+      "lib/src/ui/widgets/layer_tree_panel.dart",
+      "lib/src/ui/widgets/notes_markdown_code_block_parser.dart",
+      "lib/src/ui/widgets/right_sidebar_panel.dart",
+      "lib/src/ui/widgets/stage_canvas.dart",
+      "lib/src/ui/widgets/bgm/bgm_panel_actions.dart",
+      "lib/src/ui/widgets/dice/dice_preset_button.dart",
+      "lib/src/ui/widgets/layer_tree/layer_tree_dialogs.dart",
+      "lib/src/ui/widgets/layer_tree/layer_tree_menu.dart",
+      "lib/src/ui/widgets/layer_tree/layer_tree_row.dart",
+      "lib/src/ui/widgets/stage/stage_hit_test.dart",
+      "lib/src/ui/widgets/stage/stage_layer_tile.dart"
+    ],
+    "other": [
+      "lib/src/error/global_exception_handler.dart"
+    ]
+  }
+}

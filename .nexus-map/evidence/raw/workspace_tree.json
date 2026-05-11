@@ -1,0 +1,38 @@
+{
+  "rebuilt_at": "2026-05-08",
+  "top_level_entries": [
+    ".git/",
+    ".nexus-map/",
+    "AGENTS.md",
+    "README.md",
+    "analysis_options.yaml",
+    "build_exe.bat",
+    "docs/",
+    "lib/",
+    "pubspec.yaml",
+    "scripts/",
+    "windows/",
+    "构建.bat"
+  ],
+  "counts": {
+    "tracked_files": 91,
+    "lib_dart_files": 47,
+    "windows_runner_files": 12,
+    "scripts_files": 2,
+    "test_files": 0
+  },
+  "key_files": [
+    "lib/main.dart",
+    "lib/src/app.dart",
+    "lib/src/controller/project_controller.dart",
+    "lib/src/store/project_store.dart",
+    "lib/src/store/project_file_service.dart",
+    "lib/src/output_window_app.dart",
+    "lib/src/output/sync_render_payload.dart",
+    "lib/src/model/project_model.dart",
+    "windows/runner/main.cpp",
+    "pubspec.yaml",
+    "build_exe.bat",
+    "scripts/build_exe.ps1"
+  ]
+}
