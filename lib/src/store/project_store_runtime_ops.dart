@@ -329,10 +329,17 @@ extension ProjectStoreRuntimeOps on ProjectStore {
     if (filePath == null || filePath.isEmpty) {
       return;
     }
+    final saveSw = Stopwatch()..start();
+    final assetTotalBytes =
+        _assetBytes.values.fold<int>(0, (sum, bytes) => sum + bytes.length);
     await _fileService.saveProject(
       filePath,
       _projectWithRuntimeUiState(),
       assetBytes: _assetBytes.isEmpty ? null : _assetBytes,
+    );
+    debugPrint(
+      '[保存耗时] _saveNow 总计: ${saveSw.elapsedMilliseconds}ms '
+      '(模型序列化快照+文件服务, 资源总大小: ${assetTotalBytes ~/ 1024}KB)',
     );
   }
 

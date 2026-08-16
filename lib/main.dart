@@ -21,8 +21,8 @@ Future<void> main(List<String> args) async {
     windowLabel: isOutputWindow
         ? '输出窗口'
         : isDiceWindow
-            ? '骰子窗口'
-            : '主窗口',
+        ? '骰子窗口'
+        : '主窗口',
   );
 
   runZonedGuarded(() {

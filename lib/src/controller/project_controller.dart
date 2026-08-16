@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:desktop_multi_window/desktop_multi_window.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
@@ -11,7 +12,7 @@ import '../store/project_store.dart';
 
 class ProjectController extends GetxController {
   ProjectController({String? initialProjectFilePath})
-      : store = ProjectStore(initialProjectFilePath: initialProjectFilePath);
+    : store = ProjectStore(initialProjectFilePath: initialProjectFilePath);
 
   final ProjectStore store;
 
@@ -85,9 +86,7 @@ class ProjectController extends GetxController {
   }
 
   Map<String, dynamic> _handleDiceGetState() {
-    return {
-      'darkDice': store.darkDiceEnabled,
-    };
+    return {'darkDice': store.darkDiceEnabled};
   }
 
   Map<String, dynamic> _handleDiceRollPreset(dynamic arguments) {
@@ -231,10 +230,15 @@ class ProjectController extends GetxController {
   }
 
   Future<bool> saveProject() async {
+    final saveSw = Stopwatch()..start();
     final ok = await store.saveProject();
     if (ok) {
       _scheduleOutputSync(force: true);
     }
+    debugPrint(
+      '[保存耗时] controller.saveProject 总计: ${saveSw.elapsedMilliseconds}ms '
+      '(含输出窗口同步调度)',
+    );
     return ok;
   }
 
@@ -370,8 +374,13 @@ class ProjectController extends GetxController {
       return;
     }
 
+    final syncSw = Stopwatch()..start();
     try {
       await DesktopMultiWindow.invokeMethod(targetId, 'sync_render', payload);
+      debugPrint(
+        '[保存耗时] 输出窗口同步: ${syncSw.elapsedMilliseconds}ms '
+        '(payload ${signature.length ~/ 1024}KB)',
+      );
       if (_outputWindowId != targetId) {
         return;
       }

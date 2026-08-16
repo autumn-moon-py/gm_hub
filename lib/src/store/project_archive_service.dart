@@ -144,8 +144,13 @@ class ProjectArchiveService {
       projectBytes,
     ));
 
+    // 资源(图片/音频)本身已是压缩格式,ZIP 再压收益极小,直接 store 避免空耗 CPU
     assetMap.forEach((name, bytes) {
-      archive.addFile(ArchiveFile(name, bytes.length, bytes));
+      archive.addFile(ArchiveFile(
+        name,
+        bytes.length,
+        bytes,
+      )..compress = false);
     });
 
     final encoded = ZipEncoder().encode(archive);

@@ -83,6 +83,7 @@ class ProjectFileService {
     ProjectModel project, {
     Map<String, List<int>>? assetBytes,
   }) async {
+    final saveSw = Stopwatch()..start();
     await _ensureSaveParentExists(projectFilePath);
     if (project.formatVersion == 2) {
       await _writeZip(
@@ -90,9 +91,13 @@ class ProjectFileService {
         project,
         assetBytes ?? const <String, List<int>>{},
       );
-      return;
+    } else {
+      await _writeProjectFile(projectFilePath, project);
     }
-    await _writeProjectFile(projectFilePath, project);
+    debugPrint(
+      '[保存耗时] saveProject 总计: ${saveSw.elapsedMilliseconds}ms '
+      '(文件: $projectFilePath, 资源数: ${assetBytes?.length ?? 0})',
+    );
   }
 
   async_lib.Future<void> _writeZip(
@@ -100,12 +105,19 @@ class ProjectFileService {
     ProjectModel project,
     Map<String, List<int>> assetBytes,
   ) async {
+    final zipSw = Stopwatch()..start();
     final bytes = await ProjectArchiveService.buildBytesInIsolate(
       model: project,
       assetMap: assetBytes,
     );
+    debugPrint(
+      '[保存耗时] ZIP 打包: ${zipSw.elapsedMilliseconds}ms '
+      '(产物 ${bytes.length ~/ 1024}KB, 资源数: ${assetBytes.length})',
+    );
+    final writeSw = Stopwatch()..start();
     final file = File(projectFilePath);
     await file.writeAsBytes(bytes, flush: true);
+    debugPrint('[保存耗时] 写盘(flush): ${writeSw.elapsedMilliseconds}ms');
   }
 
   void saveProjectSync(
@@ -180,17 +192,31 @@ class ProjectFileService {
   ) async {
     final ext = p.extension(projectFilePath).toLowerCase();
     if (ext == '.json') {
+      final jsonSw = Stopwatch()..start();
       final jsonText = await Isolate.run(() => project.toPrettyJson());
+      debugPrint(
+        '[保存耗时] JSON 序列化: ${jsonSw.elapsedMilliseconds}ms '
+        '(${jsonText.length ~/ 1024}KB)',
+      );
+      final writeSw = Stopwatch()..start();
       final file = File(projectFilePath);
       await file.writeAsString(jsonText);
+      debugPrint('[保存耗时] 写盘(JSON): ${writeSw.elapsedMilliseconds}ms');
       return;
     }
+    final jsonSw = Stopwatch()..start();
     final compressed = await Isolate.run(() {
       final jsonText = project.toPrettyJson();
       return gzip.encode(utf8.encode(jsonText));
     });
+    debugPrint(
+      '[保存耗时] 序列化+gzip: ${jsonSw.elapsedMilliseconds}ms '
+      '(压缩后 ${compressed.length ~/ 1024}KB)',
+    );
+    final writeSw = Stopwatch()..start();
     final file = File(projectFilePath);
     await file.writeAsBytes(compressed, flush: true);
+    debugPrint('[保存耗时] 写盘(gzip): ${writeSw.elapsedMilliseconds}ms');
   }
 
   void _writeProjectFileSync(
