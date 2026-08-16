@@ -9,10 +9,18 @@ Future<void> showLayerRenameDialog(
   required LayerTreeFacade facade,
   String? targetId,
 }) async {
-  if (targetId != null) {
-    facade.selectNode(targetId);
+  // 确保目标节点被选中，但不触发 selectNode 的 toggle 行为
+  // （selectNode 在节点已唯一选中时会 clearSelection，导致重命名失败）
+  final effectiveTargetId = targetId ?? facade.selection;
+  if (effectiveTargetId != null &&
+      (facade.selection != effectiveTargetId ||
+          facade.selectedIds.length != 1)) {
+    facade.selectNode(effectiveTargetId);
   }
-  final controller = TextEditingController(text: facade.selectionName ?? '');
+  final currentName = effectiveTargetId != null
+      ? (facade.getNodeById(effectiveTargetId)?.name ?? '')
+      : (facade.selectionName ?? '');
+  final controller = TextEditingController(text: currentName);
   final renamed = await showDialog<String>(
     context: context,
     builder: (context) {
@@ -67,7 +75,9 @@ void handleLayerNodeActivate(
 
 bool isToggleSelectionPressed() {
   final keyboard = HardwareKeyboard.instance;
-  return keyboard.isControlPressed || keyboard.isMetaPressed;
+  // Windows 上 isMetaPressed 对应 Win 键，容易因系统快捷键/输入法
+  // 导致 keyUp 丢失而误判为持续按下，故仅用 isControlPressed。
+  return keyboard.isControlPressed;
 }
 
 bool isRangeSelectionPressed() {

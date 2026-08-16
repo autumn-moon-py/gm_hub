@@ -57,7 +57,6 @@ void handleLayerNodeMenuAction({
 }) {
   switch (action) {
     case LayerTreeActionKey.rename:
-      facade.selectNode(node.id);
       showRenameDialog(context, targetId: node.id);
       break;
     case LayerTreeActionKey.toggleVisible:
@@ -95,8 +94,7 @@ void handleLayerNodeMenuAction({
       }
       break;
     case LayerTreeActionKey.delete:
-      if (!facade.selectedIds.contains(node.id) ||
-          facade.selectedIds.length <= 1) {
+      if (!facade.selectedIds.contains(node.id)) {
         facade.selectNode(node.id);
       }
       facade.deleteSelected();

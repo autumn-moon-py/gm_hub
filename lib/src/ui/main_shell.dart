@@ -1,12 +1,9 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
 import '../controller/project_controller.dart';
 import 'facade/project_ui_facade.dart';
-import 'main_shell/main_shell_actions.dart';
 import 'main_shell/stage_content.dart';
 import 'widgets/bgm_panel.dart';
 import 'widgets/dice_panel.dart';
@@ -16,54 +13,90 @@ import 'widgets/right_sidebar_panel.dart';
 class MainShell extends GetView<ProjectController> {
   const MainShell({super.key});
 
-  bool _shouldHandleGlobalUndo() {
-    final focusedChild = WidgetsBinding.instance.focusManager.primaryFocus;
-    if (focusedChild == null) {
-      return true;
-    }
-    final context = focusedChild.context;
-    if (context == null) {
-      return true;
-    }
-    return context.findAncestorWidgetOfExactType<EditableText>() == null;
-  }
-
   @override
   Widget build(BuildContext context) {
     final store = controller.store;
     final ui = MainShellUiFacade(store);
     return FileDropWrapper(
       facade: ui.layerTree,
-      child: CallbackShortcuts(
-        bindings: {
-          const SingleActivator(LogicalKeyboardKey.keyS, control: true): () {
-            unawaited(saveProjectWithFeedback(context, controller));
-          },
-          const SingleActivator(LogicalKeyboardKey.keyZ, control: true): () {
-            if (_shouldHandleGlobalUndo()) {
-              controller.undoLayerChange();
-            }
-          },
-          const SingleActivator(LogicalKeyboardKey.delete): () {
-            controller.deleteSelected();
-          },
+      child: _GlobalKeyboardHandler(
+        onUndo: () {
+          controller.undoLayerChange();
         },
-        child: Focus(
-          autofocus: true,
-          child: Scaffold(
-            appBar: AppBar(
-              titleSpacing: 0,
-              leading: buildMainMenuButton(
-                context: context,
-                controller: controller,
-              ),
-              actions: buildMainShellActions(controller: controller),
-            ),
-            body: MainShellBody(ui: ui),
-          ),
-        ),
+        onDelete: () {
+          controller.deleteSelected();
+        },
+        child: MainShellBody(ui: ui),
       ),
     );
+  }
+}
+
+class _GlobalKeyboardHandler extends StatefulWidget {
+  const _GlobalKeyboardHandler({
+    required this.onUndo,
+    required this.onDelete,
+    required this.child,
+  });
+
+  final VoidCallback onUndo;
+  final VoidCallback onDelete;
+  final Widget child;
+
+  @override
+  State<_GlobalKeyboardHandler> createState() => _GlobalKeyboardHandlerState();
+}
+
+class _GlobalKeyboardHandlerState extends State<_GlobalKeyboardHandler> {
+  @override
+  void initState() {
+    super.initState();
+    HardwareKeyboard.instance.addHandler(_handleKeyEvent);
+  }
+
+  @override
+  void dispose() {
+    HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
+    super.dispose();
+  }
+
+  bool _handleKeyEvent(KeyEvent event) {
+    if (event is! KeyDownEvent) {
+      return false;
+    }
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.delete) {
+      if (!_isEditableTextFocused()) {
+        widget.onDelete();
+        return true;
+      }
+      return false;
+    }
+    if (key == LogicalKeyboardKey.keyZ) {
+      final isControl = HardwareKeyboard.instance.isControlPressed;
+      if (isControl && !_isEditableTextFocused()) {
+        widget.onUndo();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool _isEditableTextFocused() {
+    final focusedChild = WidgetsBinding.instance.focusManager.primaryFocus;
+    if (focusedChild == null) {
+      return false;
+    }
+    final context = focusedChild.context;
+    if (context == null) {
+      return false;
+    }
+    return context.findAncestorWidgetOfExactType<EditableText>() != null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return widget.child;
   }
 }
 

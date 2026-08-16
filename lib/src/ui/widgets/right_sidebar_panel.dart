@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../facade/project_ui_facade.dart';
 import 'layer_tree_panel.dart';
@@ -231,6 +233,7 @@ class _NotesEditorState extends State<_NotesEditor> {
     _controller.addListener(_handleTextChanged);
     _focusNode.addListener(_saveViewState);
     _scrollController.addListener(_saveViewState);
+    widget.facade.notesFontSizeListenable.addListener(_onFontSizeChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _focusNode.hasFocus) {
         return;
@@ -271,11 +274,18 @@ class _NotesEditorState extends State<_NotesEditor> {
     _controller.removeListener(_handleTextChanged);
     _focusNode.removeListener(_saveViewState);
     _scrollController.removeListener(_saveViewState);
+    widget.facade.notesFontSizeListenable.removeListener(_onFontSizeChanged);
     _notesSyncTimer?.cancel();
     _controller.dispose();
     _focusNode.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onFontSizeChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   void _handleTextChanged() {
@@ -348,10 +358,10 @@ class _NotesEditorState extends State<_NotesEditor> {
                 maxLines: null,
                 minLines: null,
                 textAlignVertical: TextAlignVertical.top,
-                style: const TextStyle(
-                  fontSize: 13,
+                style: TextStyle(
+                  fontSize: widget.facade.notesFontSize,
                   height: 1.45,
-                  color: Color(0xFF22323A),
+                  color: const Color(0xFF22323A),
                 ),
                 decoration: const InputDecoration(
                   border: InputBorder.none,
@@ -391,31 +401,81 @@ class _NotesEditorState extends State<_NotesEditor> {
   }
 }
 
-class _NotesFullscreenPage extends StatelessWidget {
+class _NotesFullscreenPage extends StatefulWidget {
   const _NotesFullscreenPage({required this.facade});
 
   final LayerTreeFacade facade;
 
   @override
+  State<_NotesFullscreenPage> createState() => _NotesFullscreenPageState();
+}
+
+class _NotesFullscreenPageState extends State<_NotesFullscreenPage> {
+  @override
+  void initState() {
+    super.initState();
+    widget.facade.notesFontSizeListenable.addListener(_onFontSizeChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.facade.notesFontSizeListenable.removeListener(_onFontSizeChanged);
+    super.dispose();
+  }
+
+  void _onFontSizeChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF3F7FA),
-      appBar: AppBar(title: const Text('笔记区')),
-      body: Padding(
-        padding: const EdgeInsets.all(12),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border.all(color: const Color(0xFFD7E0E6)),
-            borderRadius: BorderRadius.circular(16),
+      appBar: AppBar(
+        title: const Text('笔记区'),
+        actions: [
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: Text(
+                '字体 ${widget.facade.notesFontSize.toInt()}px',
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF607D8B),
+                ),
+              ),
+            ),
           ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: ListenableBuilder(
-              listenable: facade.notesListenable,
-              builder: (context, child) {
-                return _NotesEditor(facade: facade, showExpandButton: false);
-              },
+        ],
+      ),
+      body: Listener(
+        onPointerSignal: (event) {
+          if (event is PointerScrollEvent) {
+            final dy = event.scrollDelta.dy;
+            final ctrl = HardwareKeyboard.instance.isControlPressed;
+            if (ctrl && dy.abs() > 0.5) {
+              widget.facade.adjustNotesFontSize(dy > 0 ? -1 : 1);
+            }
+          }
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border.all(color: const Color(0xFFD7E0E6)),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: ListenableBuilder(
+                listenable: widget.facade.notesListenable,
+                builder: (context, child) {
+                  return _NotesEditor(facade: widget.facade, showExpandButton: false);
+                },
+              ),
             ),
           ),
         ),

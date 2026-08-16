@@ -20,19 +20,57 @@ extension ProjectStoreProjectOps on ProjectStore {
     return _audioExtensions.contains(ext.toLowerCase());
   }
 
+  String _newAssetKey({
+    required bool isAudio,
+    required List<int> bytes,
+    required String originalExt,
+  }) {
+    final prefix = isAudio ? 'audio' : 'img';
+    final hash = sha256.convert(bytes).toString().substring(0, 8);
+    final ext = originalExt.startsWith('.') ? originalExt : '.$originalExt';
+    return 'assets/${prefix}_$hash$ext';
+  }
+
+  void _syncAssetBytes(String newKey, List<int> bytes) {
+    if (_project.formatVersion != 2) {
+      return;
+    }
+    // 同 key(内容哈希相同)直接覆盖,天然去重
+    final next = Map<String, List<int>>.from(_assetBytes);
+    next[newKey] = bytes;
+    _assetBytes = next;
+  }
+
   Future<List<NodeModel>> _buildImageNodesFromPaths(
     List<String> paths, {
     required _NodeWorldTransform parentWorld,
   }) async {
     final nodes = <NodeModel>[];
+    final reservedNumbers = <int>{};
     for (final path in paths) {
-      final relPath = await _fileService.importImageFile(path);
+      final id = _nextId('img', additionalReserved: reservedNumbers);
+      final num = int.tryParse(id.substring(4)) ?? 1;
+      reservedNumbers.add(num);
+
+      String relPath;
+      if (_project.formatVersion == 2) {
+        final bytes = await File(path).readAsBytes();
+        relPath = _newAssetKey(
+          isAudio: false,
+          bytes: bytes,
+          originalExt: p.extension(path),
+        );
+        _syncAssetBytes(relPath, bytes);
+      } else {
+        relPath = await _fileService.importImageFile(path);
+      }
+
       final absPath = _resolveAssetAbsolutePath(relPath);
       final size = await _resolveAssetSizeAsync(absPath);
       final name = p.basenameWithoutExtension(path);
       nodes.add(
         NodeModel(
-          id: _nextId('img'),
+          id: id,
           type: NodeType.image,
           name: name,
           visible: true,
@@ -53,11 +91,28 @@ extension ProjectStoreProjectOps on ProjectStore {
   Future<List<AudioTrackModel>> _buildTracksFromPaths(
       List<String> paths) async {
     final tracks = <AudioTrackModel>[];
+    final reservedNumbers = <int>{};
     for (final path in paths) {
-      final relPath = await _fileService.importAudioFile(path);
+      final id = _nextId('track', additionalReserved: reservedNumbers);
+      final num = int.tryParse(id.substring(6)) ?? 1;
+      reservedNumbers.add(num);
+
+      String relPath;
+      if (_project.formatVersion == 2) {
+        final bytes = await File(path).readAsBytes();
+        relPath = _newAssetKey(
+          isAudio: true,
+          bytes: bytes,
+          originalExt: p.extension(path),
+        );
+        _syncAssetBytes(relPath, bytes);
+      } else {
+        relPath = await _fileService.importAudioFile(path);
+      }
+
       tracks.add(
         AudioTrackModel(
-          id: _nextId('track'),
+          id: id,
           name: p.basenameWithoutExtension(path),
           asset: relPath,
         ),
@@ -83,10 +138,16 @@ extension ProjectStoreProjectOps on ProjectStore {
       ),
     );
     final last = nodes.last;
+    final previousSelectedIds = Set<String>.from(_selectedIds);
+    final previousPrimarySelection = _selection;
     _selection = last.id;
     _selectedIds
       ..clear()
       ..add(last.id);
+    _notifySelectionListeners(
+      previousSelectedIds: previousSelectedIds,
+      previousPrimarySelection: previousPrimarySelection,
+    );
   }
 
   void _appendAudioTracks(List<AudioTrackModel> tracks) {
@@ -145,17 +206,28 @@ extension ProjectStoreProjectOps on ProjectStore {
     _clearLayerHistory();
     _resetRuntimeUiState();
     if (loaded != null) {
-      _project = loaded;
+      _project = loaded.model;
+      _injectResolver(loaded.resolver, loaded.assetMap);
+      _repairDuplicateBattleIds();
       _invalidateDerivedCaches(assetExists: true);
       _refreshIdSeedFromProject();
+      _refreshIdSeedFromBattle();
       _restoreStoredUiState();
       _markLatestProjectJsonDirty();
       await _applyAudioStateToPlayer();
+      _notifyBattleListeners();
       _notifyStoreListeners();
       return;
     }
+    // 加载失败时沿用目录 fallback,保证后续导入资源可解析
+    _injectResolver(
+      LegacyAssetResolver(p.dirname(projectFilePath)),
+      const <String, List<int>>{},
+    );
     _refreshIdSeedFromProject();
+    _refreshIdSeedFromBattle();
     await _applyAudioStateToPlayer();
+    _notifyBattleListeners();
     _onProjectChanged();
   }
 
@@ -165,10 +237,22 @@ extension ProjectStoreProjectOps on ProjectStore {
     await _stopAudioSession();
     _setProjectFilePath(projectFilePath);
     _clearLayerHistory();
+
     final loaded = await _fileService.loadProject(projectFilePath);
-    _project = loaded ?? ProjectModel.initial();
+    final fallback = ProjectLoadResult(
+      model: ProjectModel.initial(),
+      resolver: LegacyAssetResolver(p.dirname(projectFilePath)),
+      assetMap: const <String, List<int>>{},
+    );
+    final result = loaded ?? fallback;
+
+    _injectResolver(result.resolver, result.assetMap);
+    _project = result.model;
+
+    _repairDuplicateBattleIds();
     _invalidateDerivedCaches(assetExists: true);
     _refreshIdSeedFromProject();
+    _refreshIdSeedFromBattle();
     _assetSizeCache.clear();
     _restoreStoredUiState();
     _selection = null;
@@ -176,6 +260,7 @@ extension ProjectStoreProjectOps on ProjectStore {
     _resetRuntimeUiState();
     _markLatestProjectJsonDirty();
     await _applyAudioStateToPlayer();
+    _notifyBattleListeners();
     _notifyStoreListeners();
   }
 
@@ -199,6 +284,7 @@ extension ProjectStoreProjectOps on ProjectStore {
     );
     _invalidateDerivedCaches(assetExists: true);
     _refreshIdSeedFromProject();
+    _refreshIdSeedFromBattle();
     _selection = null;
     _selectedIds.clear();
     _restoreStoredUiState();
@@ -206,6 +292,7 @@ extension ProjectStoreProjectOps on ProjectStore {
     _assetSizeCache.clear();
     _markLatestProjectJsonDirty();
     await _applyAudioStateToPlayer();
+    _notifyBattleListeners();
     _notifyStoreListeners();
   }
 
@@ -293,6 +380,7 @@ extension ProjectStoreProjectOps on ProjectStore {
     );
     _invalidateDerivedCaches(assetExists: true);
     _refreshIdSeedFromProject();
+    _refreshIdSeedFromBattle();
     _selection = null;
     _selectedIds.clear();
     _restoreStoredUiState();
@@ -300,7 +388,9 @@ extension ProjectStoreProjectOps on ProjectStore {
     _assetSizeCache.clear();
     _markLatestProjectJsonDirty();
     await _applyAudioStateToPlayer();
+    _notifyBattleListeners();
     _notifyStoreListeners();
+    await _saveNow();
   }
 
   async_lib.Future<void> importImageAsLayer() async {
@@ -411,6 +501,7 @@ extension ProjectStoreProjectOps on ProjectStore {
       parentVisible: true,
       parentLocked: false,
       parentPreserveAspect: false,
+      parentIsBackground: false,
       parentWorldPos: Offset.zero,
       parentWorldScale: 1,
       parentWorldRotation: 0,
@@ -423,10 +514,33 @@ extension ProjectStoreProjectOps on ProjectStore {
     return next;
   }
 
+  List<RenderItem> buildRenderListForNode(String nodeId) {
+    final node = _findNodeById(_project.root, nodeId);
+    if (node == null || !node.isGroup) {
+      return const [];
+    }
+    final result = <RenderItem>[];
+    _dfsCollect(
+      node: node,
+      parentVisible: true,
+      parentLocked: false,
+      parentPreserveAspect: false,
+      parentIsBackground: nodeId == 'group_background',
+      parentWorldPos: Offset.zero,
+      parentWorldScale: 1,
+      parentWorldRotation: 0,
+      parentOpacity: 1,
+      depth: 0,
+      output: result,
+    );
+    return List<RenderItem>.unmodifiable(result);
+  }
+
   void selectNode(String id) {
     if (_selection == id &&
         _selectedIds.length == 1 &&
         _selectedIds.contains(id)) {
+      clearSelection();
       return;
     }
     final previousSelectedIds = Set<String>.from(_selectedIds);
@@ -615,6 +729,7 @@ extension ProjectStoreProjectOps on ProjectStore {
   void addTextLayer() {
     final parentId = _resolveInsertParentId();
     final parentWorld = _resolveWorldTransform(parentId);
+    const defaultFontSize = 17.0;
     final node = NodeModel(
       id: _nextId('text'),
       type: NodeType.text,
@@ -623,7 +738,7 @@ extension ProjectStoreProjectOps on ProjectStore {
       locked: false,
       opacity: 1,
       text: '新建文字',
-      fontSize: 34,
+      fontSize: defaultFontSize,
       textColorValue: 0xFFFFFFFF,
       transform: _buildCenteredLocalTransform(
         size: _resolveTextNodeSize(
@@ -636,7 +751,7 @@ extension ProjectStoreProjectOps on ProjectStore {
             opacity: 1,
             transform: TransformModel.identity(),
             text: '新建文字',
-            fontSize: 34,
+            fontSize: 17,
             textColorValue: 0xFFFFFFFF,
           ),
         ),
@@ -700,10 +815,17 @@ extension ProjectStoreProjectOps on ProjectStore {
 
     _pushLayerHistorySnapshot();
     _project = _project.copyWith(root: _removeNodes(_project.root, targets));
+    final previousSelectedIds = Set<String>.from(_selectedIds);
+    final previousPrimarySelection = _selection;
     _selectedIds.removeWhere(targets.contains);
     if (_selection != null && targets.contains(_selection)) {
       _selection = _selectedIds.isEmpty ? null : _selectedIds.first;
     }
+    _notifySelectionListeners(
+      previousSelectedIds: previousSelectedIds,
+      previousPrimarySelection: previousPrimarySelection,
+    );
+    _assetSizeCache.clear();
     _onProjectChanged();
   }
 
@@ -724,7 +846,7 @@ extension ProjectStoreProjectOps on ProjectStore {
     _onProjectChanged(
       notifyController: false,
       notifyStage: false,
-      notifyLayerTree: false,
+      notifyLayerTree: true,
       notifyAudio: false,
       notifyDice: false,
       notifyTransform: false,

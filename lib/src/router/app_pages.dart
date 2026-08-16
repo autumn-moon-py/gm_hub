@@ -1,7 +1,7 @@
 ﻿import 'package:get/get.dart';
 
 import '../controller/project_controller.dart';
-import '../ui/main_shell.dart';
+import '../ui/project_host_shell.dart';
 import 'app_routes.dart';
 
 class AppPages {
@@ -11,7 +11,7 @@ class AppPages {
     return [
       GetPage(
         name: AppRoutes.main,
-        page: () => const MainShell(),
+        page: () => const ProjectHostShell(),
         binding: BindingsBuilder(() {
           if (!Get.isRegistered<ProjectController>()) {
             Get.put(

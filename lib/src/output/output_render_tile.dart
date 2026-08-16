@@ -11,7 +11,7 @@ class OutputRenderTile extends StatelessWidget {
   });
 
   final RenderItem item;
-  final double renderedHeight;
+  final double? renderedHeight;
 
   @override
   Widget build(BuildContext context) {

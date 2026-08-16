@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:async' as async_lib;
 import 'dart:collection';
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:crypto/crypto.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -11,11 +13,17 @@ import 'package:image/image.dart' as img;
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path/path.dart' as p;
 
+import '../model/battle_model.dart';
 import '../model/project_model.dart';
 import '../model/render_item.dart';
+import 'asset_cache_service.dart';
+import 'asset_resolver.dart';
+import 'project_archive_service.dart';
 import 'project_file_service.dart';
+import 'project_migrator.dart';
 
 part 'project_store_project_ops.dart';
+part 'project_store_battle_ops.dart';
 part 'project_store_node_ops.dart';
 part 'project_store_runtime_ops.dart';
 part 'project_store_runtime_delegate.dart';
@@ -93,6 +101,7 @@ class ProjectStore extends ChangeNotifier {
   final ChangeNotifier _audioNotifier = ChangeNotifier();
   final ChangeNotifier _diceNotifier = ChangeNotifier();
   final ChangeNotifier _transformNotifier = ChangeNotifier();
+  final ChangeNotifier _battleNotifier = ChangeNotifier();
   final ChangeNotifier _globalLoadingNotifier = ChangeNotifier();
   final Map<String, ChangeNotifier> _nodeSelectionNotifiers =
       <String, ChangeNotifier>{};
@@ -104,9 +113,18 @@ class ProjectStore extends ChangeNotifier {
   String _notesText = '';
   String _latestProjectJson = '';
   bool _latestProjectJsonDirty = true;
-  int _idSeed = 10;
   String? _projectFilePath;
   String? _projectDirPath;
+  AssetResolver? _assetResolver;
+  Map<String, List<int>> _assetBytes = const <String, List<int>>{};
+
+  void _injectResolver(
+    AssetResolver? resolver,
+    Map<String, List<int>> assetBytes,
+  ) {
+    _assetResolver = resolver;
+    _assetBytes = assetBytes;
+  }
   String _outputScaleMode = 'stretch';
   final Map<String, Size> _assetSizeCache = <String, Size>{};
   final Map<String, bool> _assetExistsCache = <String, bool>{};
@@ -159,6 +177,7 @@ class ProjectStore extends ChangeNotifier {
   Listenable get audioListenable => _audioNotifier;
   Listenable get diceListenable => _diceNotifier;
   Listenable get transformListenable => _transformNotifier;
+  Listenable get battleListenable => _battleNotifier;
   Listenable selectionListenableForNode(String nodeId) {
     return _nodeSelectionNotifiers.putIfAbsent(nodeId, ChangeNotifier.new);
   }
@@ -204,7 +223,7 @@ class ProjectStore extends ChangeNotifier {
   void _pushLayerHistorySnapshot() {
     _layerUndoStack.add(
       _LayerHistorySnapshot(
-        project: _project.copyWith(),
+        root: _project.root.copyWith(),
         selection: _selection,
         selectedIds: Set<String>.from(_selectedIds),
       ),
@@ -225,7 +244,7 @@ class ProjectStore extends ChangeNotifier {
     final previousSelectedIds = Set<String>.from(_selectedIds);
     final previousPrimarySelection = _selection;
     final snapshot = _layerUndoStack.removeLast();
-    _project = snapshot.project;
+    _project = _project.copyWith(root: snapshot.root);
     _selection = snapshot.selection;
     _selectedIds
       ..clear()
@@ -233,6 +252,7 @@ class ProjectStore extends ChangeNotifier {
     _invalidateDerivedCaches(renderList: true, assetExists: true);
     _assetSizeCache.clear();
     _refreshIdSeedFromProject();
+    _refreshIdSeedFromBattle();
     _markLatestProjectJsonDirty();
     _notifySelectionListeners(
       previousSelectedIds: previousSelectedIds,
@@ -320,6 +340,10 @@ class ProjectStore extends ChangeNotifier {
     }
   }
 
+  void _notifyBattleListeners() {
+    _battleNotifier.notifyListeners();
+  }
+
   void _invalidateDerivedCaches({
     bool renderList = true,
     bool assetExists = false,
@@ -330,6 +354,54 @@ class ProjectStore extends ChangeNotifier {
     if (assetExists) {
       _assetExistsCache.clear();
     }
+  }
+
+  void _pruneUnusedAssets() {
+    if (_project.formatVersion != 2) {
+      return;
+    }
+    final used = <String>{};
+    void visit(NodeModel node) {
+      final a = node.asset;
+      if (a != null && a.isNotEmpty && !p.isAbsolute(a)) {
+        used.add(a);
+      }
+      for (final c in node.children) {
+        visit(c);
+      }
+    }
+
+    visit(_project.root);
+    for (final track in _project.tracks) {
+      if (track.asset.isNotEmpty && !p.isAbsolute(track.asset)) {
+        used.add(track.asset);
+      }
+    }
+    // battle 立绘引用(相对路径)一并保护,防止内嵌后误删
+    for (final t in _project.battle.library.npcTemplates) {
+      final a = t.portrait?.asset;
+      if (a != null && a.isNotEmpty && !p.isAbsolute(a)) {
+        used.add(a);
+      }
+    }
+    for (final r in _project.battle.library.playerResources) {
+      final a = r.portrait?.asset;
+      if (a != null && a.isNotEmpty && !p.isAbsolute(a)) {
+        used.add(a);
+      }
+    }
+    // 保留 undo 栈可达的资源,防止撤销删除/替换后资源丢失
+    for (final snapshot in _layerUndoStack) {
+      used.addAll(snapshot.assetRefs);
+    }
+
+    final next = <String, List<int>>{};
+    for (final key in _assetBytes.keys) {
+      if (used.contains(key)) {
+        next[key] = _assetBytes[key]!;
+      }
+    }
+    _assetBytes = next;
   }
 
   void _pushGlobalLoading() {
@@ -351,7 +423,7 @@ class ProjectStore extends ChangeNotifier {
         final elapsed = DateTime.now().difference(visibleSince);
         final remaining = _globalLoadingMinVisibleDuration - elapsed;
         if (remaining > Duration.zero) {
-          await async_lib.Future<void>.delayed(remaining);
+          await Future<void>.delayed(remaining);
         }
       }
       _globalLoadingCount = 0;
@@ -387,12 +459,12 @@ class ProjectStore extends ChangeNotifier {
     _audioNotifier.dispose();
     _diceNotifier.dispose();
     _transformNotifier.dispose();
+    _battleNotifier.dispose();
     _globalLoadingNotifier.dispose();
     _runtime.dispose();
     super.dispose();
   }
 
-  static const double _textDragHandleHeight = 14;
 
   Size _resolveAssetSize(String? assetAbsolutePath) {
     const fallback = Size(220, 140);
@@ -441,7 +513,10 @@ class ProjectStore extends ChangeNotifier {
     }
     try {
       final bytes = await file.readAsBytes();
-      final dimensions = await compute(_decodeImageDimensions, bytes);
+      final dimensions = await compute<Uint8List, List<int>?>(
+        _decodeImageDimensions,
+        bytes,
+      );
       if (dimensions == null || dimensions.length != 2) {
         _assetSizeCache[path] = fallback;
         return fallback;
@@ -475,21 +550,26 @@ class ProjectStore extends ChangeNotifier {
   Size _resolveTextNodeSize(NodeModel node) {
     final value = (node.text ?? '').trim().isEmpty ? '文字' : node.text!.trim();
     final fontSize = (node.fontSize ?? 34).clamp(8.0, 256.0);
+    final style = TextStyle(
+      fontSize: fontSize,
+      fontWeight: FontWeight.w700,
+      color: Color(node.textColorValue ?? 0xFFFFFFFF),
+    );
+    final strutStyle = StrutStyle(
+      fontSize: fontSize,
+      fontWeight: FontWeight.w700,
+      forceStrutHeight: true,
+    );
     final painter = TextPainter(
-      text: TextSpan(
-        text: value,
-        style: TextStyle(
-          fontSize: fontSize,
-          fontWeight: FontWeight.w700,
-          color: Color(node.textColorValue ?? 0xFFFFFFFF),
-        ),
-      ),
-      maxLines: 8,
+      text: TextSpan(text: value, style: style),
+      maxLines: 1,
+      strutStyle: strutStyle,
       textDirection: TextDirection.ltr,
-    )..layout(maxWidth: 1200);
+    )..layout(maxWidth: double.infinity);
+    // Padding must match RenderItemContent: EdgeInsets.fromLTRB(4, 2, 4, 2)
     return Size(
-      (painter.width + 20).clamp(60, 1300),
-      (painter.height + _textDragHandleHeight + 10).clamp(30, 900),
+      (painter.width + 8).clamp(20, 1300),
+      (painter.height + 4).clamp(20, 900),
     );
   }
 }
@@ -537,6 +617,9 @@ class _NodeWorldInfo {
   final double parentWorldScale;
   final double parentWorldRotation;
   final bool lockedByAncestor;
+  final bool preserveAspect;
+  final double baseHeight;
+  final double worldScale;
 
   const _NodeWorldInfo({
     required this.id,
@@ -544,19 +627,40 @@ class _NodeWorldInfo {
     required this.parentWorldScale,
     required this.parentWorldRotation,
     required this.lockedByAncestor,
+    this.preserveAspect = false,
+    this.baseHeight = 0,
+    this.worldScale = 1,
   });
 }
 
 class _LayerHistorySnapshot {
-  final ProjectModel project;
+  final NodeModel root;
   final String? selection;
   final Set<String> selectedIds;
+  final Set<String> assetRefs;
 
-  const _LayerHistorySnapshot({
-    required this.project,
+  _LayerHistorySnapshot({
+    required this.root,
     required this.selection,
     required this.selectedIds,
-  });
+  }) : assetRefs = _collectAssetRefs(root);
+
+  // 收集快照树中所有相对路径的 asset 引用
+  static Set<String> _collectAssetRefs(NodeModel node) {
+    final refs = <String>{};
+    void visit(NodeModel n) {
+      final a = n.asset;
+      if (a != null && a.isNotEmpty && !p.isAbsolute(a)) {
+        refs.add(a);
+      }
+      for (final c in n.children) {
+        visit(c);
+      }
+    }
+
+    visit(node);
+    return refs;
+  }
 }
 
 class _FlowMessageState {

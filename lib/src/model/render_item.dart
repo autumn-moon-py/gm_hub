@@ -21,6 +21,7 @@ class RenderItem {
     this.textColorValue,
     this.textHandleHeight = 0,
     this.preserveAspect = false,
+    this.isBackground = false,
     required this.baseWidth,
     required this.baseHeight,
   });
@@ -42,6 +43,7 @@ class RenderItem {
   final int? textColorValue;
   final double textHandleHeight;
   final bool preserveAspect;
+  final bool isBackground;
   final double baseWidth;
   final double baseHeight;
 }

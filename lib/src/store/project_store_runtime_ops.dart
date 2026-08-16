@@ -1,5 +1,14 @@
 part of 'project_store.dart';
 
+// 迁移结果分类:UI 层据此提示用户
+enum ConvertFormatOutcome {
+  converted,
+  alreadyNew,
+  aborted,
+  noFilePath,
+  failed,
+}
+
 extension ProjectStoreRuntimeOps on ProjectStore {
   bool updateCanvasSize({required double width, required double height}) {
     if (!width.isFinite || !height.isFinite) {
@@ -183,7 +192,17 @@ extension ProjectStoreRuntimeOps on ProjectStore {
       if (file == null) {
         return false;
       }
-      final nextPath = await _fileService.importImageFile(file.path);
+      final bytes = await File(file.path).readAsBytes();
+      final nextPath = _project.formatVersion == 2
+          ? _newAssetKey(
+              isAudio: false,
+              bytes: bytes,
+              originalExt: p.extension(file.path),
+            )
+          : await _fileService.importImageFile(file.path);
+      if (_project.formatVersion == 2) {
+        _syncAssetBytes(nextPath, bytes);
+      }
       _pushLayerHistorySnapshot();
       _project = _project.copyWith(
         root: _mutateNode(
@@ -225,6 +244,10 @@ extension ProjectStoreRuntimeOps on ProjectStore {
 
   bool moveTrackDown(String trackId) {
     return _runtime.moveTrack(trackId, 1);
+  }
+
+  bool reorderTrack(int fromIndex, int toIndex) {
+    return _runtime.reorderTrack(fromIndex, toIndex);
   }
 
   async_lib.Future<bool> deleteTrack(String trackId) async {
@@ -298,6 +321,7 @@ extension ProjectStoreRuntimeOps on ProjectStore {
       notifyDice: notifyDice,
       notifyTransform: notifyTransform,
     );
+    _pruneUnusedAssets();
   }
 
   async_lib.Future<void> _saveNow() async {
@@ -305,6 +329,84 @@ extension ProjectStoreRuntimeOps on ProjectStore {
     if (filePath == null || filePath.isEmpty) {
       return;
     }
-    await _fileService.saveProject(filePath, _projectWithRuntimeUiState());
+    await _fileService.saveProject(
+      filePath,
+      _projectWithRuntimeUiState(),
+      assetBytes: _assetBytes.isEmpty ? null : _assetBytes,
+    );
+  }
+
+  async_lib.Future<ConvertFormatOutcome> convertToNewFormat({
+    required async_lib.Future<bool> Function(List<String> missing)
+        confirmMissing,
+  }) async {
+    final path = _projectFilePath;
+    if (path == null || path.isEmpty) {
+      return ConvertFormatOutcome.noFilePath;
+    }
+    if (_project.formatVersion == 2) {
+      return ConvertFormatOutcome.alreadyNew;
+    }
+
+    // 迁移全程加全局 loading,避免期间用户操作被迁移快照覆盖
+    return runWithGlobalLoading(() async {
+      final backupPath = '$path.bak';
+      try {
+        debugPrint('convertToNewFormat 开始迁移: $path');
+        final result = await ProjectMigrator.migrate(
+          model: _project,
+          projectFilePath: path,
+          onMissingChoice: (missing) async {
+            final proceed = await confirmMissing(missing);
+            return proceed ? MissingAssetChoice.skip : MissingAssetChoice.abort;
+          },
+        );
+
+        // 备份原文件
+        await File(path).copy(backupPath);
+
+        // ZIP 压缩在 isolate 中执行,避免阻塞 UI
+        final zipBytes = await ProjectArchiveService.buildBytesInIsolate(
+          model: result.model,
+          assetMap: result.assetMap,
+        );
+        await File(path).writeAsBytes(zipBytes, flush: true);
+
+        // 重新加载以刷新 store 状态
+        final newBytes = result.assetMap;
+        final cacheDir = await AssetCacheService.extract(
+          projectFilePath: path,
+          assetMap: newBytes,
+          model: result.model,
+        );
+        final newResolver = EmbeddedAssetResolver(cacheDir);
+        _project = result.model;
+        _injectResolver(newResolver, Map<String, List<int>>.from(newBytes));
+        _assetSizeCache.clear();
+        _markLatestProjectJsonDirty();
+        _invalidateDerivedCaches(assetExists: true, renderList: true);
+        _notifyStoreListeners();
+        debugPrint(
+          'convertToNewFormat 完成: 内嵌 ${newBytes.length} 个资源, 备份于 $backupPath',
+        );
+        return ConvertFormatOutcome.converted;
+      } on MigrationAbortedException {
+        debugPrint('convertToNewFormat 被用户取消');
+        return ConvertFormatOutcome.aborted;
+      } catch (e, st) {
+        // 转换失败:打印原因,并从备份恢复原文件,避免磁盘/内存脱节
+        debugPrint('convertToNewFormat 失败: $e\n$st');
+        try {
+          if (File(backupPath).existsSync()) {
+            await File(backupPath).copy(path);
+            debugPrint('convertToNewFormat 已从备份恢复原文件');
+          }
+        } catch (e2, st2) {
+          // 恢复失败则忽略,保留 .bak 供手动恢复
+          debugPrint('convertToNewFormat 恢复备份失败: $e2\n$st2');
+        }
+        return ConvertFormatOutcome.failed;
+      }
+    });
   }
 }

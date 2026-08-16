@@ -9,19 +9,33 @@ class StageLayerTile extends StatelessWidget {
   const StageLayerTile({
     super.key,
     required this.item,
-    required this.width,
-    required this.height,
+    this.width,
+    this.height,
   });
 
   final RenderItem item;
-  final double width;
-  final double height;
+  final double? width;
+  final double? height;
 
   @override
   Widget build(BuildContext context) {
     if (!item.visible) {
-      return SizedBox(width: width, height: height);
+      return SizedBox(width: width ?? 0, height: height ?? 0);
     }
+
+    // Text nodes: let content size itself via IntrinsicWidth/IntrinsicHeight
+    if (item.type == NodeType.text) {
+      return IntrinsicWidth(
+        child: IntrinsicHeight(
+          child: RenderItemContent(
+            item: item,
+            renderedHeight: height,
+            showImagePlaceholder: true,
+          ),
+        ),
+      );
+    }
+
     final backgroundColor = item.type == NodeType.image
         ? Colors.transparent
         : colorFromSeed(item.id);

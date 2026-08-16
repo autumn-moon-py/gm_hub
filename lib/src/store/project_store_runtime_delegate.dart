@@ -221,10 +221,10 @@ class _ProjectRuntimeDelegate {
 
     String cocDifficulty;
     int hpMark;
-    if (totalResult == -4) {
+    if (baseTotal == -4) {
       cocDifficulty = '大失败';
       hpMark = 4;
-    } else if (totalResult == 4) {
+    } else if (baseTotal == 4) {
       cocDifficulty = '大成功';
       hpMark = 4;
     } else if (totalResult <= -1) {
@@ -333,7 +333,20 @@ class _ProjectRuntimeDelegate {
       if (file == null) {
         return false;
       }
-      final nextPath = await _store._fileService.importAudioFile(file.path);
+      final bytes = await File(file.path).readAsBytes();
+      final nextPath = _store._project.formatVersion == 2
+          ? _store._newAssetKey(
+              isAudio: true,
+              bytes: bytes,
+              originalExt: p.extension(file.path),
+            )
+          : await _store._fileService.importAudioFile(file.path);
+      if (_store._project.formatVersion == 2) {
+        _store._assetBytes = {
+          ..._store._assetBytes,
+          nextPath: bytes,
+        };
+      }
       final nextTracks = _store._project.tracks
           .map(
             (item) =>
@@ -379,6 +392,26 @@ class _ProjectRuntimeDelegate {
     final toIndex = fromIndex + delta;
     if (toIndex < 0 || toIndex >= tracks.length) {
       return false;
+    }
+
+    final nextTracks = [...tracks];
+    final movedTrack = nextTracks.removeAt(fromIndex);
+    nextTracks.insert(toIndex, movedTrack);
+    _store._project = _store._project.copyWith(tracks: nextTracks);
+    _store._onProjectChanged();
+    return true;
+  }
+
+  bool reorderTrack(int fromIndex, int toIndex) {
+    final tracks = _store._project.tracks;
+    if (fromIndex < 0 ||
+        fromIndex >= tracks.length ||
+        toIndex < 0 ||
+        toIndex >= tracks.length) {
+      return false;
+    }
+    if (fromIndex == toIndex) {
+      return true;
     }
 
     final nextTracks = [...tracks];

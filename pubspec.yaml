@@ -17,6 +17,8 @@ dependencies:
   image: ^4.2.0
   audioplayers: ^6.0.0
   path: ^1.9.1
+  archive: ^3.6.1
+  crypto: ^3.0.6
   appflowy_editor: ^6.2.0
   appflowy_editor_plugins:
     git:

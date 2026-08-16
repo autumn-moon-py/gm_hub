@@ -12,6 +12,8 @@ OutputSyncState parseSyncRenderPayload({
       fallbackCanvasWidth: current.canvasWidth,
       fallbackCanvasHeight: current.canvasHeight,
       fallbackScaleMode: current.outputScaleMode,
+      fallbackCurrentMode: current.currentMode,
+      fallbackBattle: current.battle,
     );
     return current.withSync(
       renderList: payload.renderList,
@@ -19,6 +21,8 @@ OutputSyncState parseSyncRenderPayload({
       canvasWidth: payload.canvasWidth,
       canvasHeight: payload.canvasHeight,
       outputScaleMode: payload.outputScaleMode,
+      currentMode: payload.currentMode,
+      battle: payload.battle,
       syncedAt: now,
     );
   } on FormatException catch (e) {

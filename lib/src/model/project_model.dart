@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'battle_model.dart';
+
 enum NodeType { group, image, text }
 
 double? _tryReadJsonDouble(dynamic value) {
@@ -447,27 +449,35 @@ class UiStateModel {
 
 class ProjectModel {
   final int version;
+  final int formatVersion;
   final String name;
+  final ProjectMode currentMode;
   final CanvasModel canvas;
   final NodeModel root;
   final List<AudioTrackModel> tracks;
   final AudioStateModel audioState;
+  final BattleModuleModel battle;
   final UiStateModel uiState;
 
   const ProjectModel({
     required this.version,
+    required this.formatVersion,
     required this.name,
+    required this.currentMode,
     required this.canvas,
     required this.root,
     required this.tracks,
     required this.audioState,
+    required this.battle,
     required this.uiState,
   });
 
   factory ProjectModel.initial() {
     return ProjectModel(
       version: 1,
+      formatVersion: 1,
       name: '主持中枢项目',
+      currentMode: ProjectMode.scene,
       canvas: const CanvasModel(width: 1920, height: 1080),
       root: NodeModel(
         id: 'root',
@@ -522,6 +532,7 @@ class ProjectModel {
       ),
       tracks: const [],
       audioState: const AudioStateModel.initial(),
+      battle: const BattleModuleModel.initial(),
       uiState: const UiStateModel.initial(),
     );
   }
@@ -530,9 +541,13 @@ class ProjectModel {
     final rawAudio =
         (json['audio'] as Map?)?.cast<String, dynamic>() ?? const {};
     final rawTracks = rawAudio['tracks'];
+    final rawBattle =
+        (json['battle'] as Map?)?.cast<String, dynamic>() ?? const {};
     return ProjectModel(
       version: _readJsonInt(json['version'], fallback: 1),
+      formatVersion: _readJsonInt(json['formatVersion'], fallback: 1),
       name: (json['name'] as String?) ?? '主持中枢项目',
+      currentMode: projectModeFromJson(json['currentMode']),
       canvas: CanvasModel.fromJson(
         (json['canvas'] as Map?)?.cast<String, dynamic>() ?? const {},
       ),
@@ -549,6 +564,7 @@ class ProjectModel {
       audioState: AudioStateModel.fromJson(
         (rawAudio['state'] as Map?)?.cast<String, dynamic>() ?? const {},
       ),
+      battle: BattleModuleModel.fromJson(rawBattle),
       uiState: UiStateModel.fromJson(
         (json['uiState'] as Map?)?.cast<String, dynamic>() ?? const {},
       ),
@@ -557,20 +573,26 @@ class ProjectModel {
 
   ProjectModel copyWith({
     int? version,
+    int? formatVersion,
     String? name,
+    ProjectMode? currentMode,
     CanvasModel? canvas,
     NodeModel? root,
     List<AudioTrackModel>? tracks,
     AudioStateModel? audioState,
+    BattleModuleModel? battle,
     UiStateModel? uiState,
   }) {
     return ProjectModel(
       version: version ?? this.version,
+      formatVersion: formatVersion ?? this.formatVersion,
       name: name ?? this.name,
+      currentMode: currentMode ?? this.currentMode,
       canvas: canvas ?? this.canvas,
       root: root ?? this.root,
       tracks: tracks ?? this.tracks,
       audioState: audioState ?? this.audioState,
+      battle: battle ?? this.battle,
       uiState: uiState ?? this.uiState,
     );
   }
@@ -578,7 +600,9 @@ class ProjectModel {
   String toPrettyJson() {
     final jsonObject = {
       'version': version,
+      'formatVersion': formatVersion,
       'name': name,
+      'currentMode': currentMode.name,
       'canvas': {
         'width': canvas.width,
         'height': canvas.height,
@@ -588,6 +612,7 @@ class ProjectModel {
         'tracks': tracks.map((e) => e.toJson()).toList(),
         'state': audioState.toJson(),
       },
+      'battle': battle.toJson(),
       'uiState': uiState.toJson(),
     };
     return const JsonEncoder.withIndent('  ').convert(jsonObject);

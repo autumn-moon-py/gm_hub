@@ -43,6 +43,7 @@ class StageContent extends StatelessWidget {
                         onPanDelta: ui.stage.nudgeSelection,
                         onScaleByWheel: ui.stage.scaleSelection,
                         onRotateByWheel: ui.stage.rotateSelection,
+                        onViewportScalesChanged: ui.stage.updateViewportScales,
                       ),
                     ),
                     if (ui.stage.flowMessages.isNotEmpty)
@@ -50,7 +51,11 @@ class StageContent extends StatelessWidget {
                         right: 16,
                         bottom: 16,
                         child: FlowMessagePanel(
-                          facade: ui.stage,
+                          messages: ui.stage.flowMessages,
+                          onViewportChanged: (size) {
+                            ui.stage.setFlowViewport(
+                                width: size.width, height: size.height);
+                          },
                         ),
                       ),
                   ],

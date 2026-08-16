@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../controller/project_controller.dart';
+import '../../model/battle_model.dart';
+import '../../store/project_store.dart';
+import '../facade/project_ui_facade.dart';
 
 Widget buildMainMenuButton({
   required BuildContext context,
@@ -34,6 +37,10 @@ Widget buildMainMenuButton({
           context,
         ).showSnackBar(const SnackBar(content: Text('已清空，恢复为初始状态')));
       }
+      if (value == 'convert_project') {
+        await convertProjectWithFeedback(context, controller);
+        return;
+      }
     },
     itemBuilder: (context) => const [
       PopupMenuItem(
@@ -57,6 +64,10 @@ Widget buildMainMenuButton({
         value: 'clear_project',
         child: Text('清空'),
       ),
+      PopupMenuItem(
+        value: 'convert_project',
+        child: Text('转换为新版本格式'),
+      ),
     ],
     icon: const Icon(Icons.menu),
   );
@@ -64,8 +75,52 @@ Widget buildMainMenuButton({
 
 List<Widget> buildMainShellActions({
   required ProjectController controller,
+  BattleShellFacade? battleFacade,
 }) {
+  final currentMode = controller.store.project.currentMode;
+  final isBattleMode = currentMode == ProjectMode.battle;
+  final showingBattle = isBattleMode &&
+      (battleFacade?.battle.workspace.outputShowingBattle ?? false);
   return [
+    Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+      child: SegmentedButton<ProjectMode>(
+        showSelectedIcon: false,
+        segments: const [
+          ButtonSegment<ProjectMode>(
+            value: ProjectMode.scene,
+            label: Text('场景'),
+          ),
+          ButtonSegment<ProjectMode>(
+            value: ProjectMode.battle,
+            label: Text('战斗'),
+          ),
+        ],
+        selected: <ProjectMode>{currentMode},
+        onSelectionChanged: (selection) {
+          final mode = selection.first;
+          if (mode == ProjectMode.scene) {
+            controller.switchToSceneMode();
+            return;
+          }
+          controller.switchToBattleMode();
+        },
+      ),
+    ),
+    if (isBattleMode && battleFacade != null) ...[
+      const SizedBox(width: 8),
+      Text(
+        '上屏',
+        style: ThemeData.fallback().textTheme.bodyMedium,
+      ),
+      Transform.scale(
+        scale: 0.82,
+        child: Switch(
+          value: showingBattle,
+          onChanged: battleFacade.setBattleOutputShowing,
+        ),
+      ),
+    ],
     TextButton(
       onPressed: controller.openOutputWindow,
       child: const Text('输出窗口'),
@@ -97,6 +152,66 @@ Future<void> saveProjectAsWithFeedback(
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(content: Text(ok ? '另存为成功' : '另存为失败或已取消')),
   );
+}
+
+Future<void> convertProjectWithFeedback(
+  BuildContext context,
+  ProjectController controller,
+) async {
+  final outcome = await controller.convertToNewFormat(
+    confirmMissing: (missing) async {
+      if (!context.mounted) return false;
+      return await showDialog<bool>(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => AlertDialog(
+              title: const Text('以下资源已丢失'),
+              content: SizedBox(
+                width: 480,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('迁移将跳过这些资源,继续吗?'),
+                    const SizedBox(height: 8),
+                    Flexible(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 280),
+                        child: SingleChildScrollView(
+                          child: Text(
+                            missing.join('\n'),
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('跳过并迁移'),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+    },
+  );
+  if (!context.mounted) return;
+  final msg = switch (outcome) {
+    ConvertFormatOutcome.converted => '已转换为新版本,原文件备份为 .gmh.bak',
+    ConvertFormatOutcome.alreadyNew => '当前已是新版本格式',
+    ConvertFormatOutcome.aborted => '已取消',
+    ConvertFormatOutcome.noFilePath => '项目尚未保存到文件',
+    ConvertFormatOutcome.failed => '转换失败,已从备份恢复原文件',
+  };
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
 }
 
 void _showCreateProjectDialog(

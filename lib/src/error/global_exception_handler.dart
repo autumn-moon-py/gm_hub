@@ -19,6 +19,7 @@ class GlobalExceptionHandler {
   bool Function(Object error, StackTrace stackTrace)? _previousPlatformOnError;
   bool _dialogShowing = false;
   String? _pendingReport;
+  bool _showPendingScheduled = false;
 
   void install() {
     _previousFlutterOnError = FlutterError.onError;
@@ -67,7 +68,19 @@ class GlobalExceptionHandler {
       source: source,
     );
     debugPrint(report);
-    _showDialogWithReport(report);
+    _pendingReport = report;
+    _scheduleShowPending();
+  }
+
+  void _scheduleShowPending() {
+    if (_showPendingScheduled) {
+      return;
+    }
+    _showPendingScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _showPendingScheduled = false;
+      tryShowPending();
+    });
   }
 
   String _buildReport({
@@ -94,11 +107,13 @@ class GlobalExceptionHandler {
   void _showDialogWithReport(String report) {
     if (_dialogShowing) {
       _pendingReport = report;
+      _scheduleShowPending();
       return;
     }
     final context = navigatorKey.currentContext;
     if (context == null) {
       _pendingReport = report;
+      _scheduleShowPending();
       return;
     }
     _dialogShowing = true;
@@ -112,7 +127,7 @@ class GlobalExceptionHandler {
         ),
       ).whenComplete(() {
         _dialogShowing = false;
-        tryShowPending();
+        _scheduleShowPending();
       }),
     );
   }

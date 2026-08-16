@@ -115,6 +115,17 @@ class TransformBar extends StatelessWidget {
               icon: Icons.view_agenda,
               onPressed: facade.centerSelectionVertically,
             ),
+            const SizedBox(width: 4),
+            _alignBtn(
+              tooltip: '页面顶对齐',
+              icon: Icons.vertical_align_top,
+              onPressed: facade.alignSelectionToCanvasTop,
+            ),
+            _alignBtn(
+              tooltip: '页面底对齐',
+              icon: Icons.vertical_align_bottom,
+              onPressed: facade.alignSelectionToCanvasBottom,
+            ),
           ],
         ),
       ),
@@ -178,6 +189,16 @@ class TransformBar extends StatelessWidget {
                 tooltip: '垂直居中到画布',
                 onPressed: facade.centerSelectionVertically,
                 icon: const Icon(Icons.vertical_align_center, size: 18),
+              ),
+              IconButton(
+                tooltip: '页面顶对齐',
+                onPressed: facade.alignSelectionToCanvasTop,
+                icon: const Icon(Icons.vertical_align_top, size: 18),
+              ),
+              IconButton(
+                tooltip: '页面底对齐',
+                onPressed: facade.alignSelectionToCanvasBottom,
+                icon: const Icon(Icons.vertical_align_bottom, size: 18),
               ),
               if (node.type == NodeType.image)
                 IconButton(

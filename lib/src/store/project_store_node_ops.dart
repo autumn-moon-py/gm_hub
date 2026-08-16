@@ -92,9 +92,6 @@ extension ProjectStoreNodeOps on ProjectStore {
       return false;
     }
     locations.sort((a, b) => a.index.compareTo(b.index));
-    final sameParentId = locations.first.parentId;
-    final sameParent =
-        locations.every((location) => location.parentId == sameParentId);
 
     final movingNodes =
         locations.map((location) => location.node).toList(growable: false);
@@ -122,11 +119,6 @@ extension ProjectStoreNodeOps on ProjectStore {
       }
       insertParentId = to.parentId;
       insertIndex = placement == DropPlacement.after ? to.index + 1 : to.index;
-      if (sameParent && insertParentId == sameParentId) {
-        final removedBeforeInsert =
-            locations.where((location) => location.index < insertIndex).length;
-        insertIndex -= removedBeforeInsert;
-      }
     }
 
     rootAfterRemoval = _mutateChildrenOfParent(
@@ -206,19 +198,8 @@ extension ProjectStoreNodeOps on ProjectStore {
     }
 
     final group = location.node;
-    final promoted = group.children
-        .map(
-          (child) => child.copyWith(
-            transform: child.transform.copyWith(
-              x: group.transform.x + child.transform.x * group.transform.scale,
-              y: group.transform.y + child.transform.y * group.transform.scale,
-              scale: child.transform.scale * group.transform.scale,
-              rotation: child.transform.rotation + group.transform.rotation,
-            ),
-            opacity: (child.opacity * group.opacity).clamp(0.0, 1.0),
-          ),
-        )
-        .toList();
+    // 组仅作为逻辑容器，其 transform 不影响子节点，解组时直接提升子节点即可
+    final promoted = group.children.toList();
 
     _pushLayerHistorySnapshot();
     _project = _project.copyWith(
@@ -237,13 +218,25 @@ extension ProjectStoreNodeOps on ProjectStore {
     );
 
     if (promoted.isNotEmpty) {
+      final previousSelectedIds = Set<String>.from(_selectedIds);
+      final previousPrimarySelection = _selection;
       _selection = promoted.first.id;
       _selectedIds
         ..clear()
         ..add(_selection!);
+      _notifySelectionListeners(
+        previousSelectedIds: previousSelectedIds,
+        previousPrimarySelection: previousPrimarySelection,
+      );
     } else {
+      final previousSelectedIds = Set<String>.from(_selectedIds);
+      final previousPrimarySelection = _selection;
       _selection = null;
       _selectedIds.clear();
+      _notifySelectionListeners(
+        previousSelectedIds: previousSelectedIds,
+        previousPrimarySelection: previousPrimarySelection,
+      );
     }
     _onProjectChanged();
     return true;
@@ -418,6 +411,88 @@ extension ProjectStoreNodeOps on ProjectStore {
     return _applyWorldDeltaAndCommit(deltas, recordUndo: true);
   }
 
+  bool alignSelectionToCanvasTop({
+    double viewportScaleX = 1,
+    double viewportScaleY = 1,
+  }) {
+    final selected = _selectedIds.where((id) => id != 'root').toSet();
+    if (selected.isEmpty) {
+      return false;
+    }
+    final infos = _collectNodeWorldInfos(selected);
+    final movable =
+        infos.values.where((info) => !info.lockedByAncestor).toList();
+    if (movable.isEmpty) {
+      return false;
+    }
+    final uniformScale =
+        viewportScaleX < viewportScaleY ? viewportScaleX : viewportScaleY;
+    final deltas = <String, Offset>{};
+    for (final info in movable) {
+      double dy;
+      if (info.preserveAspect &&
+          uniformScale > 0 &&
+          viewportScaleY > 0 &&
+          (uniformScale - viewportScaleY).abs() > 0.0001) {
+        // preserveAspect: rendered height uses uniformScale, but top uses scaleY.
+        // To make the visual top = 0, we need:
+        //   worldPosition.dy * scaleY = 0  =>  worldPosition.dy = 0
+        // But the rendered item's visual top is worldPosition.dy * scaleY,
+        // so dy = 0 - info.bounds.top still works for the position.
+        // The issue is only on the bottom side where rendered height differs.
+        dy = 0 - info.bounds.top;
+      } else {
+        dy = 0 - info.bounds.top;
+      }
+      deltas[info.id] = Offset(0, dy);
+    }
+    return _applyWorldDeltaAndCommit(deltas, recordUndo: true);
+  }
+
+  bool alignSelectionToCanvasBottom({
+    double viewportScaleX = 1,
+    double viewportScaleY = 1,
+  }) {
+    final selected = _selectedIds.where((id) => id != 'root').toSet();
+    if (selected.isEmpty) {
+      return false;
+    }
+    final infos = _collectNodeWorldInfos(selected);
+    final movable =
+        infos.values.where((info) => !info.lockedByAncestor).toList();
+    if (movable.isEmpty) {
+      return false;
+    }
+    final canvasHeight = _project.canvas.height;
+    final uniformScale =
+        viewportScaleX < viewportScaleY ? viewportScaleX : viewportScaleY;
+    final deltas = <String, Offset>{};
+    for (final info in movable) {
+      double dy;
+      if (info.preserveAspect &&
+          uniformScale > 0 &&
+          viewportScaleY > 0 &&
+          (uniformScale - viewportScaleY).abs() > 0.0001) {
+        // preserveAspect: rendered height = baseHeight * worldScale * uniformScale,
+        // but top = worldPosition.dy * scaleY.
+        // We want: top + renderedHeight = constraints.maxHeight = canvasHeight * scaleY
+        // => worldPosition.dy * scaleY + baseHeight * worldScale * uniformScale = canvasHeight * scaleY
+        // => worldPosition.dy = canvasHeight - baseHeight * worldScale * uniformScale / scaleY
+        // Normal (non-preserveAspect) target: canvasHeight - baseHeight * worldScale
+        // Difference: baseHeight * worldScale * (1 - uniformScale / scaleY)
+        // We adjust bounds.bottom to reflect the rendered visual bottom:
+        final renderedVisualHeight =
+            info.baseHeight * info.worldScale * uniformScale / viewportScaleY;
+        final adjustedBottom = info.bounds.top + renderedVisualHeight;
+        dy = canvasHeight - adjustedBottom;
+      } else {
+        dy = canvasHeight - info.bounds.bottom;
+      }
+      deltas[info.id] = Offset(0, dy);
+    }
+    return _applyWorldDeltaAndCommit(deltas, recordUndo: true);
+  }
+
   bool alignSelected(AlignAction action) {
     final selected = _selectedIds.where((id) => id != 'root').toSet();
     if (selected.length < 2) {
@@ -437,7 +512,7 @@ extension ProjectStoreNodeOps on ProjectStore {
     }
 
     if (action == AlignAction.distributeH) {
-      if (movable.length < 3) {
+      if (movable.length < 2) {
         return false;
       }
       movable.sort((a, b) => a.bounds.left.compareTo(b.bounds.left));
@@ -462,7 +537,7 @@ extension ProjectStoreNodeOps on ProjectStore {
     }
 
     if (action == AlignAction.distributeV) {
-      if (movable.length < 3) {
+      if (movable.length < 2) {
         return false;
       }
       movable.sort((a, b) => a.bounds.top.compareTo(b.bounds.top));

@@ -20,17 +20,7 @@ extension ProjectStoreTreeOps on ProjectStore {
   }
 
   String? _resolveAssetAbsolutePath(String? assetPath) {
-    if (assetPath == null || assetPath.isEmpty) {
-      return null;
-    }
-    if (p.isAbsolute(assetPath)) {
-      return p.normalize(assetPath);
-    }
-    final baseDir = _projectDirPath;
-    if (baseDir == null || baseDir.isEmpty) {
-      return null;
-    }
-    return p.normalize(p.join(baseDir, assetPath));
+    return _assetResolver?.resolve(assetPath);
   }
 
   bool _assetPathExists(String? assetPath) {
@@ -56,16 +46,26 @@ extension ProjectStoreTreeOps on ProjectStore {
     return null;
   }
 
-  String _nextId(String prefix) {
-    _idSeed += 1;
-    return '${prefix}_$_idSeed';
-  }
+  String _nextId(String prefix, {Set<int>? additionalReserved}) {
+    final usedNumbers = <int>{};
+    if (additionalReserved != null) {
+      usedNumbers.addAll(additionalReserved);
+    }
 
-  void _refreshIdSeedFromProject() {
-    var maxUsedId = 10;
+    void collect(String id) {
+      final expectedPrefix = '${prefix}_';
+      if (!id.startsWith(expectedPrefix)) {
+        return;
+      }
+      final suffix = id.substring(expectedPrefix.length);
+      final value = int.tryParse(suffix);
+      if (value != null && value > 0) {
+        usedNumbers.add(value);
+      }
+    }
 
     void visitNode(NodeModel node) {
-      maxUsedId = math.max(maxUsedId, _parseNumericIdSuffix(node.id));
+      collect(node.id);
       for (final child in node.children) {
         visitNode(child);
       }
@@ -73,18 +73,28 @@ extension ProjectStoreTreeOps on ProjectStore {
 
     visitNode(_project.root);
     for (final track in _project.tracks) {
-      maxUsedId = math.max(maxUsedId, _parseNumericIdSuffix(track.id));
+      collect(track.id);
     }
-    _idSeed = maxUsedId;
+
+    final battle = _project.battle;
+    for (final template in battle.library.npcTemplates) {
+      collect(template.id);
+    }
+    for (final resource in battle.library.playerResources) {
+      collect(resource.id);
+    }
+    for (final entity in battle.workspace.entities) {
+      collect(entity.id);
+    }
+
+    var nextNumber = 1;
+    while (usedNumbers.contains(nextNumber)) {
+      nextNumber += 1;
+    }
+    return '${prefix}_$nextNumber';
   }
 
-  int _parseNumericIdSuffix(String id) {
-    final match = RegExp(r'_(\d+)$').firstMatch(id);
-    if (match == null) {
-      return 0;
-    }
-    return int.tryParse(match.group(1)!) ?? 0;
-  }
+  void _refreshIdSeedFromProject() {}
 
   String _resolveInsertParentId() {
     final selected = _selection;
@@ -111,6 +121,10 @@ extension ProjectStoreTreeOps on ProjectStore {
     var scale = 1.0;
     var rotation = 0.0;
     for (final node in path) {
+      // 组节点仅作为逻辑容器，其 transform 不参与世界变换累加
+      if (node.isGroup) {
+        continue;
+      }
       final localScaled = Offset(
         node.transform.x * scale,
         node.transform.y * scale,

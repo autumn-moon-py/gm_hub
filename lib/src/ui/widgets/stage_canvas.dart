@@ -2,7 +2,9 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../model/project_model.dart';
 import '../../model/render_item.dart';
+import '../../render/render_item_content.dart';
 import 'stage/stage_hit_test.dart';
 import 'stage/stage_layer_tile.dart';
 
@@ -20,6 +22,7 @@ class StageCanvas extends StatelessWidget {
   final ValueChanged<Offset> onPanDelta;
   final ValueChanged<double> onScaleByWheel;
   final ValueChanged<double> onRotateByWheel;
+  final void Function(double scaleX, double scaleY)? onViewportScalesChanged;
 
   const StageCanvas({
     super.key,
@@ -36,6 +39,7 @@ class StageCanvas extends StatelessWidget {
     required this.onPanDelta,
     required this.onScaleByWheel,
     required this.onRotateByWheel,
+    this.onViewportScalesChanged,
   });
 
   bool _shouldKeepSelectionOnTap({
@@ -94,11 +98,13 @@ class StageCanvas extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      clipBehavior: Clip.antiAlias,
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.hardEdge,
       child: LayoutBuilder(
         builder: (context, constraints) {
           final scaleX = constraints.maxWidth / canvasWidth;
           final scaleY = constraints.maxHeight / canvasHeight;
+          onViewportScalesChanged?.call(scaleX, scaleY);
           final uniformScale = scaleX < scaleY ? scaleX : scaleY;
           final stageScene = RepaintBoundary(
             child: _StageCanvasScene(
@@ -184,6 +190,7 @@ class StageCanvas extends StatelessWidget {
                         if (selectedItem == null) {
                           return const SizedBox.shrink();
                         }
+                        final isText = selectedItem.type == NodeType.text;
                         final itemWidth = _itemWidth(
                           selectedItem,
                           scaleX: scaleX,
@@ -201,16 +208,49 @@ class StageCanvas extends StatelessWidget {
                             child: Transform.rotate(
                               angle: selectedItem.worldRotation,
                               alignment: Alignment.center,
-                              child: Container(
-                                width: itemWidth,
-                                height: itemHeight,
-                                decoration: BoxDecoration(
-                                  border: Border.all(
-                                    color: Colors.amber,
-                                    width: 3,
-                                  ),
-                                ),
-                              ),
+                              child: isText
+                                  ? Transform.scale(
+                                      scale: selectedItem.worldScale,
+                                      alignment: Alignment.center,
+                                      child: IntrinsicWidth(
+                                        child: IntrinsicHeight(
+                                          child: Stack(
+                                            children: [
+                                              // Invisible content to size the stack
+                                              Opacity(
+                                                opacity: 0,
+                                                child: RenderItemContent(
+                                                  item: selectedItem,
+                                                  renderedHeight: null,
+                                                  showImagePlaceholder: true,
+                                                ),
+                                              ),
+                                              // Border overlay
+                                              Positioned.fill(
+                                                child: DecoratedBox(
+                                                  decoration: BoxDecoration(
+                                                    border: Border.all(
+                                                      color: Colors.amber,
+                                                      width: 3,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    )
+                                  : Container(
+                                      width: itemWidth,
+                                      height: itemHeight,
+                                      decoration: BoxDecoration(
+                                        border: Border.all(
+                                          color: Colors.amber,
+                                          width: 3,
+                                        ),
+                                      ),
+                                    ),
                             ),
                           ),
                         );
@@ -243,6 +283,7 @@ class _StageCanvasScene extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Stack(
+      clipBehavior: Clip.hardEdge,
       children: [
         for (final item in renderList)
           Positioned(
@@ -253,15 +294,21 @@ class _StageCanvasScene extends StatelessWidget {
               child: Transform.rotate(
                 angle: item.worldRotation,
                 alignment: Alignment.center,
-                child: StageLayerTile(
-                  item: item,
-                  width: item.baseWidth *
-                      item.worldScale *
-                      (item.preserveAspect ? uniformScale : scaleX),
-                  height: item.baseHeight *
-                      item.worldScale *
-                      (item.preserveAspect ? uniformScale : scaleY),
-                ),
+                child: item.type == NodeType.text
+                    ? Transform.scale(
+                        scale: item.worldScale,
+                        alignment: Alignment.center,
+                        child: StageLayerTile(item: item),
+                      )
+                    : StageLayerTile(
+                        item: item,
+                        width: item.baseWidth *
+                            item.worldScale *
+                            (item.preserveAspect ? uniformScale : scaleX),
+                        height: item.baseHeight *
+                            item.worldScale *
+                            (item.preserveAspect ? uniformScale : scaleY),
+                      ),
               ),
             ),
           ),

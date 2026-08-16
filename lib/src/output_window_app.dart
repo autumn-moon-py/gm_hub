@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+import 'model/battle_model.dart';
 import 'model/project_model.dart';
+import 'output/battle_output_view.dart';
 import 'output/output_layout.dart';
 import 'output/output_render_tile.dart';
 import 'output/output_sync_parser.dart';
@@ -160,115 +162,140 @@ class _OutputWindowAppState extends State<OutputWindowApp> {
         backgroundColor: const Color(0xFF182028),
         body: ColoredBox(
           color: const Color(0xFF182028),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final layout = computeOutputLayout(
-                constraints: constraints,
-                canvasWidth: _syncState.canvasWidth,
-                canvasHeight: _syncState.canvasHeight,
-                outputScaleMode: _syncState.outputScaleMode,
-              );
-              final renderableItems = _syncState.renderList
-                  .where(isRenderableItem)
-                  .toList();
-              final hasFlowMessages = _syncState.flowMessages.isNotEmpty;
-              final flowSignature = _syncState.flowMessages
-                  .map((item) => item.id)
-                  .join('|');
-              if (flowSignature != _lastFlowMessageSignature) {
-                _lastFlowMessageSignature = flowSignature;
-                if (hasFlowMessages) {
-                  _scheduleFlowScrollToBottom();
-                }
-              }
-              final uniformScale = layout.renderScaleX < layout.renderScaleY
-                  ? layout.renderScaleX
-                  : layout.renderScaleY;
+          child: _buildOutputBody(),
+        ),
+      ),
+    );
+  }
 
-              return GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onDoubleTapDown: (details) {
-                  final hitId = hitTestTopDown(
-                    renderList: renderableItems,
-                    localPosition:
-                        details.localPosition -
-                        Offset(layout.offsetX, layout.offsetY),
-                    scaleX: layout.renderScaleX,
-                    scaleY: layout.renderScaleY,
-                    useFullBoundsHit: true,
-                  );
-                  if (hitId == null || hitId.isEmpty) {
-                    return;
-                  }
-                  _selectNode(hitId);
-                },
-                child: Stack(
-                  clipBehavior: Clip.hardEdge,
-                  children: [
-                    if (_syncState.renderList.isEmpty && !hasFlowMessages)
-                      Positioned.fill(
-                        child: Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 780),
-                              child: SingleChildScrollView(
-                                child: SelectableText(
-                                  _statusText(),
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 14,
-                                    height: 1.4,
-                                  ),
-                                ),
-                              ),
+  Widget _buildOutputBody() {
+    final hasFlowMessages = _syncState.flowMessages.isNotEmpty;
+    final flowSignature = _syncState.flowMessages.map((item) => item.id).join('|');
+    if (flowSignature != _lastFlowMessageSignature) {
+      _lastFlowMessageSignature = flowSignature;
+      if (hasFlowMessages) {
+        _scheduleFlowScrollToBottom();
+      }
+    }
+    final isBattleMode = _syncState.currentMode == ProjectMode.battle;
+    final showingBattle =
+        isBattleMode && (_syncState.battle?.showingBattle ?? false);
+    return Stack(
+      clipBehavior: Clip.hardEdge,
+      children: [
+        Positioned.fill(
+          child: showingBattle
+              ? BattleOutputView(
+                  battle: _syncState.battle!,
+                  canvasWidth: _syncState.canvasWidth,
+                  canvasHeight: _syncState.canvasHeight,
+                  outputScaleMode: _syncState.outputScaleMode,
+                  backgroundItems: _syncState.renderList,
+                )
+              : _buildSceneOutput(hasFlowMessages: hasFlowMessages),
+        ),
+        if (hasFlowMessages) _buildFlowMessageOverlay(),
+      ],
+    );
+  }
+
+  Widget _buildSceneOutput({required bool hasFlowMessages}) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final layout = computeOutputLayout(
+          constraints: constraints,
+          canvasWidth: _syncState.canvasWidth,
+          canvasHeight: _syncState.canvasHeight,
+          outputScaleMode: _syncState.outputScaleMode,
+        );
+        final renderableItems = _syncState.renderList.where(isRenderableItem).toList();
+        final uniformScale = layout.renderScaleX < layout.renderScaleY
+            ? layout.renderScaleX
+            : layout.renderScaleY;
+
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onDoubleTapDown: (details) {
+            final hitId = hitTestTopDown(
+              renderList: renderableItems,
+              localPosition:
+                  details.localPosition - Offset(layout.offsetX, layout.offsetY),
+              scaleX: layout.renderScaleX,
+              scaleY: layout.renderScaleY,
+              useFullBoundsHit: true,
+            );
+            if (hitId == null || hitId.isEmpty) {
+              return;
+            }
+            _selectNode(hitId);
+          },
+          child: Stack(
+            clipBehavior: Clip.hardEdge,
+            children: [
+              if (_syncState.renderList.isEmpty && !hasFlowMessages)
+                Positioned.fill(
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 780),
+                        child: SingleChildScrollView(
+                          child: SelectableText(
+                            _statusText(),
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 14,
+                              height: 1.4,
                             ),
                           ),
                         ),
                       ),
-                    for (final item in renderableItems)
-                      Positioned(
-                        left:
-                            layout.offsetX +
-                            item.worldPosition.dx * layout.renderScaleX,
-                        top:
-                            layout.offsetY +
-                            item.worldPosition.dy * layout.renderScaleY,
-                        child: Opacity(
-                          opacity: (item.visible ? item.opacity : 0.0).clamp(
-                            0.0,
-                            1.0,
-                          ),
-                          child: Transform.rotate(
-                            angle: item.worldRotation,
-                            alignment: Alignment.center,
-                            child: Builder(
+                    ),
+                  ),
+                ),
+              for (final item in renderableItems)
+                Positioned(
+                  left: layout.offsetX + item.worldPosition.dx * layout.renderScaleX,
+                  top: layout.offsetY + item.worldPosition.dy * layout.renderScaleY,
+                  child: Opacity(
+                    opacity: (item.visible ? item.opacity : 0.0).clamp(0.0, 1.0),
+                    child: Transform.rotate(
+                      angle: item.worldRotation,
+                      alignment: Alignment.center,
+                      child: item.type == NodeType.text
+                          ? Transform.scale(
+                              scale: item.worldScale,
+                              alignment: Alignment.center,
+                              child: IntrinsicWidth(
+                                child: IntrinsicHeight(
+                                  child: OutputRenderTile(
+                                    item: item,
+                                    renderedHeight: null,
+                                  ),
+                                ),
+                              ),
+                            )
+                          : Builder(
                               builder: (context) {
-                                final backgroundColor =
-                                    item.type == NodeType.image
+                                final backgroundColor = item.type == NodeType.image
                                     ? Colors.transparent
                                     : colorFromSeed(item.id);
                                 return Container(
-                                  width:
-                                      item.baseWidth *
+                                  width: item.baseWidth *
                                       item.worldScale *
                                       (item.preserveAspect
                                           ? uniformScale
                                           : layout.renderScaleX),
-                                  height:
-                                      item.baseHeight *
+                                  height: item.baseHeight *
                                       item.worldScale *
                                       (item.preserveAspect
                                           ? uniformScale
                                           : layout.renderScaleY),
-                                  decoration: BoxDecoration(
-                                    color: backgroundColor,
-                                  ),
+                                  decoration: BoxDecoration(color: backgroundColor),
                                   child: OutputRenderTile(
                                     item: item,
-                                    renderedHeight:
-                                        item.baseHeight *
+                                    renderedHeight: item.baseHeight *
                                         item.worldScale *
                                         (item.preserveAspect
                                             ? uniformScale
@@ -277,17 +304,13 @@ class _OutputWindowAppState extends State<OutputWindowApp> {
                                 );
                               },
                             ),
-                          ),
-                        ),
-                      ),
-                    if (hasFlowMessages) _buildFlowMessageOverlay(),
-                  ],
+                    ),
+                  ),
                 ),
-              );
-            },
+            ],
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 

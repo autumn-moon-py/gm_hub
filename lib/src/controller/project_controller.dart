@@ -5,6 +5,7 @@ import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
+import '../model/battle_model.dart';
 import '../output/sync_render_payload.dart';
 import '../store/project_store.dart';
 
@@ -21,8 +22,22 @@ class ProjectController extends GetxController {
   bool _pendingSyncRequested = false;
   bool _pendingSyncForce = false;
   Timer? _syncRetryTimer;
+  int? _diceWindowId;
 
   bool get outputWindowOpen => _outputWindowId != null;
+  bool get diceWindowOpen => _diceWindowId != null;
+
+  void switchToSceneMode() {
+    store.setProjectMode(ProjectMode.scene);
+    update();
+    _scheduleOutputSync(force: true);
+  }
+
+  void switchToBattleMode() {
+    store.setProjectMode(ProjectMode.battle);
+    update();
+    _scheduleOutputSync(force: true);
+  }
 
   @override
   void onInit() {
@@ -34,9 +49,28 @@ class ProjectController extends GetxController {
   }
 
   Future<dynamic> _handleMethodCall(MethodCall call, int fromWindowId) async {
-    if (call.method != 'select_node') {
-      return null;
+    switch (call.method) {
+      case 'select_node':
+        return _handleSelectNode(call, fromWindowId);
+      case 'dice_get_state':
+        return _handleDiceGetState();
+      case 'dice_roll_preset':
+        return _handleDiceRollPreset(call.arguments);
+      case 'dice_roll_fate':
+        return _handleDiceRollFate(call.arguments);
+      case 'dice_roll_custom':
+        return _handleDiceRollCustom(call.arguments);
+      case 'dice_set_dark':
+        return _handleDiceSetDark(call.arguments);
+      case 'dice_clear_flow':
+        store.clearFlowMessages();
+        return null;
+      default:
+        return null;
     }
+  }
+
+  Future<dynamic> _handleSelectNode(MethodCall call, int fromWindowId) async {
     if (_outputWindowId != null && fromWindowId != _outputWindowId) {
       return null;
     }
@@ -48,6 +82,78 @@ class ProjectController extends GetxController {
 
     store.selectNode(id);
     return null;
+  }
+
+  Map<String, dynamic> _handleDiceGetState() {
+    return {
+      'darkDice': store.darkDiceEnabled,
+    };
+  }
+
+  Map<String, dynamic> _handleDiceRollPreset(dynamic arguments) {
+    final sides = _extractInt(arguments, 'sides', 20);
+    final result = store.rollPresetDice(sides);
+    update();
+    return {'result': result};
+  }
+
+  Map<String, dynamic> _handleDiceRollFate(dynamic arguments) {
+    final bonus = _extractInt(arguments, 'bonus', 0);
+    final modeStr = _extractString(arguments, 'modifierMode', 'none');
+    final mode = _parseFateModifierMode(modeStr);
+    final result = store.rollFateDice(bonus: bonus, modifierMode: mode);
+    update();
+    return {'result': result};
+  }
+
+  Map<String, dynamic> _handleDiceRollCustom(dynamic arguments) {
+    final expression = _extractString(arguments, 'expression', '');
+    final result = store.rollDice(expression);
+    update();
+    return {'result': result};
+  }
+
+  Map<String, dynamic> _handleDiceSetDark(dynamic arguments) {
+    final enabled = _extractBool(arguments, 'enabled', false);
+    store.setDarkDiceEnabled(enabled);
+    update();
+    return {'darkDice': store.darkDiceEnabled};
+  }
+
+  int _extractInt(dynamic arguments, String key, int defaultValue) {
+    if (arguments is Map) {
+      final v = arguments[key];
+      if (v is int) return v;
+      if (v is String) return int.tryParse(v) ?? defaultValue;
+    }
+    return defaultValue;
+  }
+
+  String _extractString(dynamic arguments, String key, String defaultValue) {
+    if (arguments is Map) {
+      final v = arguments[key];
+      if (v is String) return v;
+    }
+    return defaultValue;
+  }
+
+  bool _extractBool(dynamic arguments, String key, bool defaultValue) {
+    if (arguments is Map) {
+      final v = arguments[key];
+      if (v is bool) return v;
+    }
+    return defaultValue;
+  }
+
+  FateDiceModifierMode _parseFateModifierMode(String mode) {
+    switch (mode) {
+      case 'advantage':
+        return FateDiceModifierMode.advantage;
+      case 'disadvantage':
+        return FateDiceModifierMode.disadvantage;
+      default:
+        return FateDiceModifierMode.none;
+    }
   }
 
   String? _parseSelectedNodeId(dynamic arguments) {
@@ -83,6 +189,25 @@ class ProjectController extends GetxController {
     _outputWindowId = controller.windowId;
     update();
     await _syncOutputWindow(force: true);
+  }
+
+  Future<void> openDiceWindow() async {
+    final currentId = _diceWindowId;
+    if (currentId != null) {
+      final ids = await DesktopMultiWindow.getAllSubWindowIds();
+      if (ids.contains(currentId)) {
+        return;
+      }
+      _diceWindowId = null;
+    }
+
+    final controller = await DesktopMultiWindow.createWindow('dice');
+    await controller.setFrame(const Rect.fromLTWH(100, 100, 300, 480));
+    await controller.setTitle('骰子区');
+    await controller.show();
+
+    _diceWindowId = controller.windowId;
+    update();
   }
 
   Future<void> openProjectDir() async {
@@ -121,6 +246,16 @@ class ProjectController extends GetxController {
     return ok;
   }
 
+  Future<ConvertFormatOutcome> convertToNewFormat({
+    required Future<bool> Function(List<String> missing) confirmMissing,
+  }) async {
+    final outcome = await store.convertToNewFormat(
+      confirmMissing: confirmMissing,
+    );
+    _scheduleOutputSync(force: true);
+    return outcome;
+  }
+
   Future<void> clearProject() async {
     await store.clearProject();
     _scheduleOutputSync(force: true);
@@ -139,10 +274,10 @@ class ProjectController extends GetxController {
   }
 
   void _onStoreChanged() {
-    if (_outputWindowId == null) {
-      return;
+    update();
+    if (_outputWindowId != null) {
+      _scheduleOutputSync(force: false);
     }
-    _scheduleOutputSync(force: false);
   }
 
   void _scheduleOutputSync({required bool force}) {
@@ -254,6 +389,7 @@ class ProjectController extends GetxController {
   @override
   void onClose() {
     _cancelOutputRetry();
+    _diceWindowId = null;
     DesktopMultiWindow.setMethodHandler(null);
     store.removeListener(_onStoreChanged);
     store.dispose();

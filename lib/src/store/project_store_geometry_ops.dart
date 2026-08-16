@@ -79,6 +79,7 @@ extension ProjectStoreGeometryOps on ProjectStore {
     required bool parentVisible,
     required bool parentLocked,
     required bool parentPreserveAspect,
+    required bool parentIsBackground,
     required Offset parentWorldPos,
     required double parentWorldScale,
     required double parentWorldRotation,
@@ -88,12 +89,21 @@ extension ProjectStoreGeometryOps on ProjectStore {
   }) {
     final effectiveVisible = parentVisible && node.visible;
     final effectiveLocked = parentLocked || node.locked;
-    final currentScale = parentWorldScale * node.transform.scale;
-    final currentRotation = parentWorldRotation + node.transform.rotation;
-    final localScaled = Offset(
-      node.transform.x * parentWorldScale,
-      node.transform.y * parentWorldScale,
-    );
+    // 组节点仅作为逻辑容器，其 transform 不影响子节点的世界变换；
+    // 只有非组节点（image/text）的 transform 才参与世界坐标累加。
+    final isContainer = node.isGroup;
+    final currentScale = isContainer
+        ? parentWorldScale
+        : (parentWorldScale * node.transform.scale);
+    final currentRotation = isContainer
+        ? parentWorldRotation
+        : (parentWorldRotation + node.transform.rotation);
+    final localScaled = isContainer
+        ? Offset.zero
+        : Offset(
+            node.transform.x * parentWorldScale,
+            node.transform.y * parentWorldScale,
+          );
     final cosTheta = math.cos(parentWorldRotation);
     final sinTheta = math.sin(parentWorldRotation);
     final rotatedLocal = Offset(
@@ -104,6 +114,8 @@ extension ProjectStoreGeometryOps on ProjectStore {
     final currentOpacity = (parentOpacity * node.opacity).clamp(0.0, 1.0);
     final currentPreserveAspect =
         parentPreserveAspect || _isPreserveAspectGroup(node);
+    final currentIsBackground =
+        parentIsBackground || (node.isGroup && node.id == 'group_background');
 
     if (!node.isGroup) {
       final relAsset = node.asset;
@@ -114,8 +126,7 @@ extension ProjectStoreGeometryOps on ProjectStore {
           node.type == NodeType.text ? (node.fontSize ?? 34) : null;
       final textColorValue =
           node.type == NodeType.text ? node.textColorValue : null;
-      final handleHeight =
-          node.type == NodeType.text ? ProjectStore._textDragHandleHeight : 0.0;
+      final handleHeight = 0.0;
       output.add(
         RenderItem(
           id: node.id,
@@ -135,6 +146,7 @@ extension ProjectStoreGeometryOps on ProjectStore {
           textColorValue: textColorValue,
           textHandleHeight: handleHeight,
           preserveAspect: currentPreserveAspect,
+          isBackground: currentIsBackground,
           baseWidth: size.width,
           baseHeight: size.height,
         ),
@@ -147,6 +159,7 @@ extension ProjectStoreGeometryOps on ProjectStore {
         parentVisible: effectiveVisible,
         parentLocked: effectiveLocked,
         parentPreserveAspect: currentPreserveAspect,
+        parentIsBackground: currentIsBackground,
         parentWorldPos: currentPos,
         parentWorldScale: currentScale,
         parentWorldRotation: currentRotation,
@@ -253,6 +266,7 @@ extension ProjectStoreGeometryOps on ProjectStore {
       parentWorldScale: 1,
       parentWorldRotation: 0,
       parentLocked: false,
+      parentPreserveAspect: false,
       targetIds: targetIds,
       output: infos,
     );
@@ -265,15 +279,25 @@ extension ProjectStoreGeometryOps on ProjectStore {
     required double parentWorldScale,
     required double parentWorldRotation,
     required bool parentLocked,
+    required bool parentPreserveAspect,
     required Set<String> targetIds,
     required Map<String, _NodeWorldInfo> output,
   }) {
-    final currentScale = parentWorldScale * node.transform.scale;
-    final currentRotation = parentWorldRotation + node.transform.rotation;
-    final localScaled = Offset(
-      node.transform.x * parentWorldScale,
-      node.transform.y * parentWorldScale,
-    );
+    final effectiveLocked = parentLocked || node.locked;
+    // 与 _dfsCollect 保持一致：组节点不传播 transform
+    final isContainer = node.isGroup;
+    final currentScale = isContainer
+        ? parentWorldScale
+        : (parentWorldScale * node.transform.scale);
+    final currentRotation = isContainer
+        ? parentWorldRotation
+        : (parentWorldRotation + node.transform.rotation);
+    final localScaled = isContainer
+        ? Offset.zero
+        : Offset(
+            node.transform.x * parentWorldScale,
+            node.transform.y * parentWorldScale,
+          );
     final cosTheta = math.cos(parentWorldRotation);
     final sinTheta = math.sin(parentWorldRotation);
     final rotatedLocal = Offset(
@@ -281,13 +305,16 @@ extension ProjectStoreGeometryOps on ProjectStore {
       localScaled.dx * sinTheta + localScaled.dy * cosTheta,
     );
     final currentPos = parentWorldPos + rotatedLocal;
-    final effectiveLocked = parentLocked || node.locked;
+    final currentPreserveAspect =
+        parentPreserveAspect || _isPreserveAspectGroup(node);
 
     Rect? bounds;
+    double? nodeBaseHeight;
     if (!node.isGroup) {
       final relAsset = node.asset;
       final abs = _resolveAssetAbsolutePath(relAsset);
       final size = _resolveNodeBaseSize(node, abs);
+      nodeBaseHeight = size.height;
       final unrotated = Rect.fromLTWH(
         currentPos.dx,
         currentPos.dy,
@@ -304,6 +331,7 @@ extension ProjectStoreGeometryOps on ProjectStore {
         parentWorldScale: currentScale,
         parentWorldRotation: currentRotation,
         parentLocked: effectiveLocked,
+        parentPreserveAspect: currentPreserveAspect,
         targetIds: targetIds,
         output: output,
       );
@@ -322,6 +350,9 @@ extension ProjectStoreGeometryOps on ProjectStore {
         parentWorldScale: parentWorldScale,
         parentWorldRotation: parentWorldRotation,
         lockedByAncestor: effectiveLocked,
+        preserveAspect: currentPreserveAspect,
+        baseHeight: nodeBaseHeight ?? 0,
+        worldScale: currentScale,
       );
     }
     return bounds;

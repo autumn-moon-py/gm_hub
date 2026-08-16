@@ -183,25 +183,32 @@ Widget _buildTrackCard({
   required int position,
   required int trackCount,
   required bool isCurrent,
+  VoidCallback? onDragHandleLongPress,
+  VoidCallback? onDragHandleEnd,
+  double? dragFeedbackWidth,
 }) {
   return _TrackCard(
-    key: ValueKey('track_${track.id}'),
     facade: facade,
     track: track,
     position: position,
     trackCount: trackCount,
     isCurrent: isCurrent,
+    onDragHandleLongPress: onDragHandleLongPress,
+    onDragHandleEnd: onDragHandleEnd,
+    dragFeedbackWidth: dragFeedbackWidth,
   );
 }
 
 class _TrackCard extends StatefulWidget {
   const _TrackCard({
-    super.key,
     required this.facade,
     required this.track,
     required this.position,
     required this.trackCount,
     required this.isCurrent,
+    this.onDragHandleLongPress,
+    this.onDragHandleEnd,
+    this.dragFeedbackWidth,
   });
 
   final AudioControlFacade facade;
@@ -209,6 +216,9 @@ class _TrackCard extends StatefulWidget {
   final int position;
   final int trackCount;
   final bool isCurrent;
+  final VoidCallback? onDragHandleLongPress;
+  final VoidCallback? onDragHandleEnd;
+  final double? dragFeedbackWidth;
 
   @override
   State<_TrackCard> createState() => _TrackCardState();
@@ -274,78 +284,120 @@ class _TrackCardState extends State<_TrackCard> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              InkWell(
-                onTap: _toggleExpanded,
-                onDoubleTap: _setCurrentTrack,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
+              Stack(
+                children: [
+                  InkWell(
+                    onTap: _toggleExpanded,
+                    onDoubleTap: _setCurrentTrack,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(40, 10, 12, 8),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Expanded(
-                                  child: Text(
-                                    widget.track.name,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        widget.track.name,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
                                     ),
+                                    if (missing)
+                                      Padding(
+                                        padding: const EdgeInsets.only(left: 6),
+                                        child: _buildTrackBadge(
+                                          '文件缺失',
+                                          backgroundColor: const Color(0xFFFFEBEE),
+                                          foregroundColor: const Color(0xFFC62828),
+                                        ),
+                                      ),
+                                    if (widget.isCurrent)
+                                      Padding(
+                                        padding: const EdgeInsets.only(left: 6),
+                                        child: _buildTrackBadge(
+                                          '当前',
+                                          backgroundColor: const Color(0xFF1565C0),
+                                          foregroundColor: Colors.white,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  tagSummary,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: widget.track.tags.isEmpty
+                                        ? FontWeight.w400
+                                        : FontWeight.w600,
+                                    color: subtitleColor,
                                   ),
                                 ),
-                                if (missing)
-                                  Padding(
-                                    padding: const EdgeInsets.only(left: 6),
-                                    child: _buildTrackBadge(
-                                      '文件缺失',
-                                      backgroundColor: const Color(0xFFFFEBEE),
-                                      foregroundColor: const Color(0xFFC62828),
-                                    ),
-                                  ),
-                                if (widget.isCurrent)
-                                  Padding(
-                                    padding: const EdgeInsets.only(left: 6),
-                                    child: _buildTrackBadge(
-                                      '当前',
-                                      backgroundColor: const Color(0xFF1565C0),
-                                      foregroundColor: Colors.white,
-                                    ),
-                                  ),
                               ],
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              tagSummary,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: widget.track.tags.isEmpty
-                                    ? FontWeight.w400
-                                    : FontWeight.w600,
-                                color: subtitleColor,
-                              ),
+                          ),
+                          const SizedBox(width: 8),
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Icon(
+                              _expanded ? Icons.expand_less : Icons.expand_more,
+                              size: 18,
+                              color: const Color(0xFF607D8B),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: Icon(
-                          _expanded ? Icons.expand_less : Icons.expand_more,
-                          size: 18,
-                          color: const Color(0xFF607D8B),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: 40,
+                    child: Draggable<int>(
+                      data: widget.position,
+                      onDragStarted: widget.onDragHandleLongPress,
+                      onDragEnd: (_) => widget.onDragHandleEnd?.call(),
+                      feedback: Material(
+                        elevation: 6,
+                        borderRadius: BorderRadius.circular(12),
+                        child: SizedBox(
+                          width: widget.dragFeedbackWidth ?? 200,
+                          child: Opacity(
+                            opacity: 0.85,
+                            child: _buildTrackCard(
+                              facade: widget.facade,
+                              track: widget.track,
+                              position: widget.position,
+                              trackCount: widget.trackCount,
+                              isCurrent: widget.isCurrent,
+                            ),
+                          ),
+                        ),
+                      ),
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.grab,
+                        child: Center(
+                          child: Icon(
+                            Icons.drag_handle,
+                            size: 20,
+                            color: const Color(0xFF90A4AE),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
               ClipRect(
                 child: AnimatedSize(
@@ -366,6 +418,8 @@ class _TrackCardState extends State<_TrackCard> {
                                 child: SelectionArea(
                                   child: Text(
                                     fullPath,
+                                    maxLines: 3,
+                                    overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
                                       fontSize: 12,
                                       height: 1.35,
@@ -402,51 +456,6 @@ class _TrackCardState extends State<_TrackCard> {
                                         size: 16,
                                       ),
                                       label: Text(missing ? '重新关联' : '更换文件'),
-                                      style: OutlinedButton.styleFrom(
-                                        visualDensity: VisualDensity.compact,
-                                        tapTargetSize:
-                                            MaterialTapTargetSize.shrinkWrap,
-                                        minimumSize: const Size(0, 32),
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 10,
-                                          vertical: 8,
-                                        ),
-                                      ),
-                                    ),
-                                    OutlinedButton.icon(
-                                      onPressed: widget.position > 0
-                                          ? () => widget.facade.moveTrackUp(
-                                                widget.track.id,
-                                              )
-                                          : null,
-                                      icon: const Icon(
-                                        Icons.arrow_upward,
-                                        size: 16,
-                                      ),
-                                      label: const Text('上移'),
-                                      style: OutlinedButton.styleFrom(
-                                        visualDensity: VisualDensity.compact,
-                                        tapTargetSize:
-                                            MaterialTapTargetSize.shrinkWrap,
-                                        minimumSize: const Size(0, 32),
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 10,
-                                          vertical: 8,
-                                        ),
-                                      ),
-                                    ),
-                                    OutlinedButton.icon(
-                                      onPressed: widget.position <
-                                              widget.trackCount - 1
-                                          ? () => widget.facade.moveTrackDown(
-                                                widget.track.id,
-                                              )
-                                          : null,
-                                      icon: const Icon(
-                                        Icons.arrow_downward,
-                                        size: 16,
-                                      ),
-                                      label: const Text('下移'),
                                       style: OutlinedButton.styleFrom(
                                         visualDensity: VisualDensity.compact,
                                         tapTargetSize:
@@ -499,6 +508,119 @@ class _TrackCardState extends State<_TrackCard> {
   }
 }
 
+class _DraggableTrackGrid extends StatefulWidget {
+  const _DraggableTrackGrid({
+    required this.facade,
+    required this.tracks,
+  });
+
+  final AudioControlFacade facade;
+  final List<AudioTrackModel> tracks;
+
+  @override
+  State<_DraggableTrackGrid> createState() => _DraggableTrackGridState();
+}
+
+class _DraggableTrackGridState extends State<_DraggableTrackGrid> {
+  int? _draggingIndex;
+  int? _hoverIndex;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final cardWidth = (constraints.maxWidth - 10) / 2;
+        return SingleChildScrollView(
+          child: Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              for (var i = 0; i < widget.tracks.length; i++)
+                _buildDraggableItem(
+                  index: i,
+                  cardWidth: cardWidth,
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildDraggableItem({
+    required int index,
+    required double cardWidth,
+  }) {
+    final track = widget.tracks[index];
+    final isCurrent = track.id == widget.facade.audioState.currentTrackId;
+    final isDragging = _draggingIndex == index;
+    final isHovered = _hoverIndex == index && _draggingIndex != null && _draggingIndex != index;
+
+    return SizedBox(
+      width: cardWidth,
+      child: DragTarget<int>(
+        onWillAcceptWithDetails: (details) {
+          setState(() {
+            _hoverIndex = index;
+          });
+          return true;
+        },
+        onLeave: (_) {
+          if (_hoverIndex == index) {
+            setState(() {
+              _hoverIndex = null;
+            });
+          }
+        },
+        onAcceptWithDetails: (details) {
+          final fromIndex = details.data;
+          if (fromIndex != index) {
+            widget.facade.reorderTrack(fromIndex, index);
+          }
+          setState(() {
+            _draggingIndex = null;
+            _hoverIndex = null;
+          });
+        },
+        builder: (context, candidateData, rejectedData) {
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOutCubic,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: isHovered
+                  ? Border.all(color: const Color(0xFF1565C0), width: 2)
+                  : null,
+            ),
+            child: Opacity(
+              opacity: isDragging ? 0.3 : 1.0,
+              child: _buildTrackCard(
+                facade: widget.facade,
+                track: track,
+                position: index,
+                trackCount: widget.tracks.length,
+                isCurrent: isCurrent,
+                onDragHandleLongPress: () {
+                  setState(() {
+                    _draggingIndex = index;
+                  });
+                },
+                onDragHandleEnd: () {
+                  setState(() {
+                    _draggingIndex = null;
+                    _hoverIndex = null;
+                  });
+                },
+                dragFeedbackWidth: cardWidth,
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
 Future<void> showTrackLibraryDialog(
   BuildContext context, {
   required AudioControlFacade facade,
@@ -515,7 +637,7 @@ Future<void> showTrackLibraryDialog(
       return Dialog(
         insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         child: SizedBox(
-          width: 760,
+          width: 860,
           height: dialogHeight,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
@@ -629,22 +751,7 @@ Future<void> showTrackLibraryDialog(
                       )
                     else
                       Expanded(
-                        child: ListView.separated(
-                          itemCount: tracks.length,
-                          separatorBuilder: (context, index) =>
-                              const SizedBox(height: 10),
-                          itemBuilder: (context, index) {
-                            final track = tracks[index];
-                            return _buildTrackCard(
-                              facade: facade,
-                              track: track,
-                              position: index,
-                              trackCount: tracks.length,
-                              isCurrent:
-                                  track.id == facade.audioState.currentTrackId,
-                            );
-                          },
-                        ),
+                        child: _DraggableTrackGrid(facade: facade, tracks: tracks),
                       ),
                   ],
                 );
