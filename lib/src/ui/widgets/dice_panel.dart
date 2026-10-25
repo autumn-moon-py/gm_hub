@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
 import '../../controller/project_controller.dart';
+import '../../service/qq_group_bridge.dart';
 import '../../store/project_store.dart';
 import '../facade/project_ui_facade.dart';
 import 'dice/dice_preset_button.dart';
@@ -30,8 +31,12 @@ class DicePanel extends StatefulWidget {
 class _DicePanelState extends State<DicePanel> {
   final TextEditingController _formulaController = TextEditingController();
   late final TextEditingController _fateBonusController;
+  late final TextEditingController _qqGroupController;
+  final ScrollController _feedScrollController = ScrollController();
+  final List<_DiceFeedEntry> _feed = <_DiceFeedEntry>[];
+  int _seenQqCount = 0;
+  bool _feedScrollScheduled = false;
   FateDiceModifierMode _fateModifierMode = FateDiceModifierMode.none;
-  String _lastResult = '';
 
   @override
   void initState() {
@@ -39,6 +44,7 @@ class _DicePanelState extends State<DicePanel> {
     _fateBonusController = TextEditingController(
       text: widget.fateDefaultBonus.toString(),
     );
+    _qqGroupController = TextEditingController(text: widget.facade.qqGroupId);
   }
 
   @override
@@ -53,6 +59,8 @@ class _DicePanelState extends State<DicePanel> {
   void dispose() {
     _formulaController.dispose();
     _fateBonusController.dispose();
+    _qqGroupController.dispose();
+    _feedScrollController.dispose();
     super.dispose();
   }
 
@@ -96,6 +104,7 @@ class _DicePanelState extends State<DicePanel> {
         final isVeryNarrow = constraints.maxWidth < 140;
         final darkDiceEnabled = widget.facade.darkDiceEnabled;
         final isBattle = widget.mode == DicePanelMode.battle;
+        _syncQqMessages();
         return Padding(
           padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
           child: SingleChildScrollView(
@@ -127,6 +136,8 @@ class _DicePanelState extends State<DicePanel> {
                     ],
                   ],
                 ),
+                const SizedBox(height: 10),
+                _buildQqBridgeCard(),
                 const SizedBox(height: 10),
                 if (isBattle) ...[
                   Row(
@@ -412,20 +423,12 @@ class _DicePanelState extends State<DicePanel> {
                 const SizedBox(height: 8),
                 ],
                 Container(
-                  constraints: const BoxConstraints(minHeight: 120),
-                  padding: const EdgeInsets.all(8),
+                  height: 170,
                   decoration: BoxDecoration(
                     color: const Color(0xFFEAF2F8),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: SelectableText(
-                    _lastResult.isEmpty
-                        ? (darkDiceEnabled
-                            ? '暗骰已开启，完整结果仅保留在骰子区。'
-                            : '投掷结果会输出到展示端。')
-                        : _lastResult,
-                    style: const TextStyle(fontSize: 12),
-                  ),
+                  child: _buildFeedView(darkDiceEnabled),
                 ),
               ],
             ),
@@ -435,40 +438,210 @@ class _DicePanelState extends State<DicePanel> {
     );
   }
 
+  Widget _buildQqBridgeCard() {
+    final status = widget.facade.qqBridgeStatus;
+    final Color statusColor;
+    final String statusLabel;
+    switch (status) {
+      case QQGroupBridgeStatus.connected:
+        statusColor = const Color(0xFF2E9E5B);
+        statusLabel = '已连接';
+        break;
+      case QQGroupBridgeStatus.connecting:
+        statusColor = const Color(0xFFE0A100);
+        statusLabel = '连接中';
+        break;
+      case QQGroupBridgeStatus.disconnected:
+        statusColor = const Color(0xFF9AA7B1);
+        statusLabel = '未连接';
+        break;
+    }
+    return Container(
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEAF2F8),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFCEDAE3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Text(
+                'QQ 骰娘',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+              const Spacer(),
+              Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(
+                  color: statusColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                statusLabel,
+                style: TextStyle(fontSize: 11, color: statusColor),
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          TextField(
+            controller: _qqGroupController,
+            keyboardType: TextInputType.number,
+            style: const TextStyle(fontSize: 12),
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: const InputDecoration(
+              isDense: true,
+              labelText: '群号',
+              hintText: '输入监听群号',
+              border: OutlineInputBorder(),
+              contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            ),
+            onChanged: widget.facade.setQqGroupId,
+          ),
+          Row(
+            children: [
+              Transform.scale(
+                scale: 0.75,
+                child: Switch(
+                  value: widget.facade.qqShowEnabled,
+                  onChanged: widget.facade.setQqShowEnabled,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+              const SizedBox(width: 2),
+              const Expanded(
+                child: Text(
+                  '展示骰娘消息',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFeedView(bool darkDiceEnabled) {
+    if (_feed.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(8),
+        child: Text(
+          darkDiceEnabled
+              ? '暗骰已开启，完整结果仅保留在骰子区。'
+              : '投掷结果与骰娘消息会显示在这里。',
+          style: const TextStyle(fontSize: 12),
+        ),
+      );
+    }
+    return ListView.builder(
+      controller: _feedScrollController,
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+      itemCount: _feed.length,
+      itemBuilder: (context, index) {
+        final entry = _feed[index];
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Text(
+            entry.text,
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.35,
+              color: entry.fromQq
+                  ? const Color(0xFF0B5C86)
+                  : const Color(0xFF1F2D36),
+              fontWeight: entry.fromQq ? FontWeight.w600 : FontWeight.w400,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// 将 Store 中新增的骰娘消息合并进本地消息流。
+  void _syncQqMessages() {
+    final messages = widget.facade.qqMessages;
+    if (messages.length < _seenQqCount) {
+      _seenQqCount = messages.length;
+      return;
+    }
+    if (messages.length == _seenQqCount) {
+      return;
+    }
+    for (var i = _seenQqCount; i < messages.length; i += 1) {
+      _feed.add(_DiceFeedEntry(text: '骰娘：${messages[i].text}', fromQq: true));
+    }
+    _seenQqCount = messages.length;
+    _trimFeed();
+    _scheduleFeedScrollToBottom();
+  }
+
+  void _appendLocalResult(String text) {
+    setState(() {
+      _feed.add(_DiceFeedEntry(text: text, fromQq: false));
+      _trimFeed();
+    });
+    _scheduleFeedScrollToBottom();
+  }
+
+  void _trimFeed() {
+    if (_feed.length > 200) {
+      _feed.removeRange(0, _feed.length - 200);
+    }
+  }
+
+  void _scheduleFeedScrollToBottom() {
+    if (_feedScrollScheduled) {
+      return;
+    }
+    _feedScrollScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _feedScrollScheduled = false;
+      if (!mounted || !_feedScrollController.hasClients) {
+        return;
+      }
+      _feedScrollController.jumpTo(
+        _feedScrollController.position.maxScrollExtent,
+      );
+    });
+  }
+
   void _rollCustom() {
     final expr = _formulaController.text.trim();
     if (expr.isEmpty) {
       return;
     }
-    final result = widget.facade.rollDice(expr);
-    setState(() {
-      _lastResult = result;
-    });
+    _appendLocalResult(widget.facade.rollDice(expr));
   }
 
   void _clearResult() {
     widget.facade.clearFlowMessages();
+    widget.facade.clearQqMessages();
     setState(() {
-      _lastResult = '';
+      _feed.clear();
+      _seenQqCount = 0;
     });
   }
 
   void _rollPreset(int sides) {
-    final result = widget.facade.rollPresetDice(sides);
-    setState(() {
-      _lastResult = result;
-    });
+    _appendLocalResult(widget.facade.rollPresetDice(sides));
   }
 
   void _rollFate() {
     final bonus = int.tryParse(_fateBonusController.text.trim()) ?? 0;
-    final result = widget.facade.rollFateDice(
-      bonus: bonus,
-      modifierMode: _fateModifierMode,
+    _appendLocalResult(
+      widget.facade.rollFateDice(
+        bonus: bonus,
+        modifierMode: _fateModifierMode,
+      ),
     );
-    setState(() {
-      _lastResult = result;
-    });
   }
 
   void _setFateModifierMode(FateDiceModifierMode mode, bool enabled) {
@@ -514,4 +687,11 @@ class _DicePanelState extends State<DicePanel> {
       ),
     );
   }
+}
+
+class _DiceFeedEntry {
+  final String text;
+  final bool fromQq;
+
+  const _DiceFeedEntry({required this.text, required this.fromQq});
 }

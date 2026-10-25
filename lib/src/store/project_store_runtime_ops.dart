@@ -113,6 +113,23 @@ extension ProjectStoreRuntimeOps on ProjectStore {
     _runtime.setDarkDiceEnabled(enabled);
   }
 
+  String get qqGroupId => _runtime.qqGroupId;
+  bool get qqShowEnabled => _runtime.qqShowEnabled;
+  QQGroupBridgeStatus get qqBridgeStatus => _runtime.qqBridgeStatus;
+  List<QQMessageItem> get qqMessages => _runtime.qqMessages;
+
+  void setQqGroupId(String groupId) {
+    _runtime.setQqGroupId(groupId);
+  }
+
+  void setQqShowEnabled(bool enabled) {
+    _runtime.setQqShowEnabled(enabled);
+  }
+
+  void clearQqMessages() {
+    _runtime.clearQqMessages();
+  }
+
   /// Global flowing-text output interface.
   /// Keep this API stable so future features can push text without coupling to UI.
   void pushFlowMessage(String text, {Color color = Colors.white}) {

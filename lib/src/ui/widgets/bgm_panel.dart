@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 
+import '../../controller/project_controller.dart';
 import '../../model/project_model.dart';
 import '../facade/project_ui_facade.dart';
 import 'bgm/bgm_panel_actions.dart';
@@ -193,6 +195,15 @@ class BgmPanel extends StatelessWidget {
     );
   }
 
+  Widget _buildFloatingWindowButton() {
+    return IconButton.outlined(
+      onPressed: () => Get.find<ProjectController>().openMusicWindow(),
+      tooltip: '弹出为悬浮窗',
+      visualDensity: VisualDensity.compact,
+      icon: const Icon(Icons.picture_in_picture_alt_rounded, size: 18),
+    );
+  }
+
   Widget _buildControlButtons(BuildContext context, AudioStateModel audio) {
     return Wrap(
       spacing: 4,
@@ -276,6 +287,8 @@ class BgmPanel extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildTrackLibraryButton(context),
+                    const SizedBox(width: 6),
+                    _buildFloatingWindowButton(),
                     const SizedBox(width: 10),
                     Expanded(child: trackInfo),
                   ],
@@ -288,6 +301,8 @@ class BgmPanel extends StatelessWidget {
               _buildControlButtons(context, audio),
               const SizedBox(width: 12),
               _buildTrackLibraryButton(context),
+              const SizedBox(width: 6),
+              _buildFloatingWindowButton(),
               const SizedBox(width: 10),
               Expanded(child: trackInfo),
             ],

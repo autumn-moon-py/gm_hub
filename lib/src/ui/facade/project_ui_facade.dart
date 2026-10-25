@@ -7,6 +7,7 @@ import '../../model/battle_model.dart';
 import '../../model/project_model.dart';
 import '../../model/render_item.dart';
 import '../../output/sync_render_payload.dart';
+import '../../service/qq_group_bridge.dart';
 import '../../store/project_store.dart';
 
 enum LayerDropPlacement { before, after, into }
@@ -872,10 +873,17 @@ class DiceControlFacade {
 
   bool get dicePanelCollapsed => _store.dicePanelCollapsed;
   bool get darkDiceEnabled => _store.darkDiceEnabled;
+  String get qqGroupId => _store.qqGroupId;
+  bool get qqShowEnabled => _store.qqShowEnabled;
+  QQGroupBridgeStatus get qqBridgeStatus => _store.qqBridgeStatus;
+  List<QQMessageItem> get qqMessages => _store.qqMessages;
   bool get globalLoading => _store.globalLoading;
   Listenable get globalLoadingListenable => _store.globalLoadingListenable;
   void toggleDicePanelCollapsed() => _store.toggleDicePanelCollapsed();
   void setDarkDiceEnabled(bool enabled) => _store.setDarkDiceEnabled(enabled);
+  void setQqGroupId(String groupId) => _store.setQqGroupId(groupId);
+  void setQqShowEnabled(bool enabled) => _store.setQqShowEnabled(enabled);
+  void clearQqMessages() => _store.clearQqMessages();
   String rollDice(String expression) => _store.rollDice(expression);
   String rollPresetDice(int sides) => _store.rollPresetDice(sides);
   String rollFateDice({

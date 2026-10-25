@@ -16,6 +16,8 @@ import 'package:path/path.dart' as p;
 import '../model/battle_model.dart';
 import '../model/project_model.dart';
 import '../model/render_item.dart';
+import '../service/excalidraw_output_bridge.dart';
+import '../service/qq_group_bridge.dart';
 import 'asset_cache_service.dart';
 import 'asset_resolver.dart';
 import 'project_archive_service.dart';
@@ -63,6 +65,13 @@ class FlowMessageItem {
     required this.x,
     required this.y,
   });
+}
+
+class QQMessageItem {
+  final String text;
+  final DateTime receivedAt;
+
+  const QQMessageItem({required this.text, required this.receivedAt});
 }
 
 class _StoreNotifier extends ChangeNotifier {

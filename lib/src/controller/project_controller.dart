@@ -24,9 +24,12 @@ class ProjectController extends GetxController {
   bool _pendingSyncForce = false;
   Timer? _syncRetryTimer;
   int? _diceWindowId;
+  int? _musicWindowId;
+  String _lastMusicSignature = '';
 
   bool get outputWindowOpen => _outputWindowId != null;
   bool get diceWindowOpen => _diceWindowId != null;
+  bool get musicWindowOpen => _musicWindowId != null;
 
   void switchToSceneMode() {
     store.setProjectMode(ProjectMode.scene);
@@ -47,6 +50,7 @@ class ProjectController extends GetxController {
       return _handleMethodCall(call, fromWindowId);
     });
     store.addListener(_onStoreChanged);
+    store.audioListenable.addListener(_onAudioChanged);
   }
 
   Future<dynamic> _handleMethodCall(MethodCall call, int fromWindowId) async {
@@ -66,8 +70,74 @@ class ProjectController extends GetxController {
       case 'dice_clear_flow':
         store.clearFlowMessages();
         return null;
+      case 'music_get_state':
+        return _buildAudioSyncPayload();
+      case 'music_play_pause':
+        store.playPause();
+        return null;
+      case 'music_stop':
+        store.stop();
+        return null;
+      case 'music_toggle_loop':
+        store.toggleLoop();
+        return null;
+      case 'music_set_volume':
+        store.setVolume(_extractDouble(call.arguments, 'value', 0.3));
+        return null;
+      case 'music_set_track':
+        final trackId = _extractString(call.arguments, 'trackId', '');
+        store.setTrack(trackId.isEmpty ? null : trackId);
+        return null;
       default:
         return null;
+    }
+  }
+
+  Map<String, dynamic> _buildAudioSyncPayload() {
+    final project = store.project;
+    return {
+      'tracks': [
+        for (final track in project.tracks)
+          {'id': track.id, 'name': track.name, 'tags': track.tags},
+      ],
+      'currentTrackId': project.audioState.currentTrackId,
+      'isPlaying': project.audioState.isPlaying,
+      'loop': project.audioState.loop,
+      'volume': project.audioState.volume,
+    };
+  }
+
+  void _onAudioChanged() {
+    if (_musicWindowId == null) {
+      return;
+    }
+    unawaited(_syncMusicWindow());
+  }
+
+  Future<void> _syncMusicWindow({bool force = false}) async {
+    final targetId = _musicWindowId;
+    if (targetId == null) {
+      return;
+    }
+    final payload = _buildAudioSyncPayload();
+    final signature = jsonEncode(payload);
+    if (!force && signature == _lastMusicSignature) {
+      return;
+    }
+    try {
+      await DesktopMultiWindow.invokeMethod(targetId, 'audio_sync', payload);
+      if (_musicWindowId != targetId) {
+        return;
+      }
+      _lastMusicSignature = signature;
+    } catch (_) {
+      // 子窗口可能尚未就绪或已关闭，静默忽略；窗口初始化时会主动拉取状态
+      final ids = await DesktopMultiWindow.getAllSubWindowIds();
+      if (!ids.contains(targetId) && _musicWindowId == targetId) {
+        _musicWindowId = null;
+        _lastMusicSignature = '';
+        update();
+      }
     }
   }
 
@@ -144,6 +214,15 @@ class ProjectController extends GetxController {
     return defaultValue;
   }
 
+  double _extractDouble(dynamic arguments, String key, double defaultValue) {
+    if (arguments is Map) {
+      final v = arguments[key];
+      if (v is num) return v.toDouble();
+      if (v is String) return double.tryParse(v) ?? defaultValue;
+    }
+    return defaultValue;
+  }
+
   FateDiceModifierMode _parseFateModifierMode(String mode) {
     switch (mode) {
       case 'advantage':
@@ -207,6 +286,29 @@ class ProjectController extends GetxController {
 
     _diceWindowId = controller.windowId;
     update();
+  }
+
+  Future<void> openMusicWindow() async {
+    final currentId = _musicWindowId;
+    if (currentId != null) {
+      final ids = await DesktopMultiWindow.getAllSubWindowIds();
+      if (ids.contains(currentId)) {
+        await _syncMusicWindow(force: true);
+        return;
+      }
+      _musicWindowId = null;
+      _lastMusicSignature = '';
+    }
+
+    final controller = await DesktopMultiWindow.createWindow('music');
+    await controller.setFrame(const Rect.fromLTWH(160, 120, 300, 520));
+    await controller.setTitle('音乐悬浮窗');
+    await controller.show();
+
+    _musicWindowId = controller.windowId;
+    _lastMusicSignature = '';
+    update();
+    await _syncMusicWindow(force: true);
   }
 
   Future<void> openProjectDir() async {
@@ -399,7 +501,9 @@ class ProjectController extends GetxController {
   void onClose() {
     _cancelOutputRetry();
     _diceWindowId = null;
+    _musicWindowId = null;
     DesktopMultiWindow.setMethodHandler(null);
+    store.audioListenable.removeListener(_onAudioChanged);
     store.removeListener(_onStoreChanged);
     store.dispose();
     super.onClose();

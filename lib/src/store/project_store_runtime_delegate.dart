@@ -1,7 +1,13 @@
 part of 'project_store.dart';
 
 class _ProjectRuntimeDelegate {
-  _ProjectRuntimeDelegate(this._store) : _audioPlayer = AudioPlayer();
+  _ProjectRuntimeDelegate(this._store) : _audioPlayer = AudioPlayer() {
+    _qqBridge = QQGroupBridge(
+      onDiceMessage: _handleQqDiceMessage,
+      onStatusChanged: _handleQqStatusChanged,
+    )..updateGroupId(_qqGroupId);
+    unawaited(_qqBridge.start());
+  }
 
   final ProjectStore _store;
   final AudioPlayer _audioPlayer;
@@ -21,10 +27,20 @@ class _ProjectRuntimeDelegate {
   double _flowTargetScrollOffset = 0;
   bool _dicePanelCollapsed = false;
   bool _darkDiceEnabled = false;
+  final List<QQMessageItem> _qqMessages = <QQMessageItem>[];
+  late final QQGroupBridge _qqBridge;
+  String _qqGroupId = '138165759';
+  bool _qqShowEnabled = false;
+  QQGroupBridgeStatus _qqBridgeStatus = QQGroupBridgeStatus.disconnected;
 
   String? get audioError => _audioError;
   bool get dicePanelCollapsed => _dicePanelCollapsed;
   bool get darkDiceEnabled => _darkDiceEnabled;
+  String get qqGroupId => _qqGroupId;
+  bool get qqShowEnabled => _qqShowEnabled;
+  QQGroupBridgeStatus get qqBridgeStatus => _qqBridgeStatus;
+  List<QQMessageItem> get qqMessages =>
+      List<QQMessageItem>.unmodifiable(_qqMessages);
   List<FlowMessageItem> get flowMessages => _flowMessages
       .map(
         (e) => FlowMessageItem(
@@ -68,11 +84,14 @@ class _ProjectRuntimeDelegate {
     _playerStateSubscription?.cancel();
     _audioPlayer.dispose();
     _diceAudioPlayer.dispose();
+    _qqBridge.dispose();
+    ExcalidrawOutputBridge.instance.dispose();
   }
 
   void resetUiState() {
     _setAudioError(null, notify: false);
     _clearFlowMessages(notify: false);
+    _qqMessages.clear();
     _dicePanelCollapsed = false;
   }
 
@@ -117,6 +136,60 @@ class _ProjectRuntimeDelegate {
     );
   }
 
+  void setQqGroupId(String groupId) {
+    final next = groupId.trim();
+    if (_qqGroupId == next) {
+      return;
+    }
+    _qqGroupId = next;
+    _qqBridge.updateGroupId(next);
+    _notifyDiceOnly();
+  }
+
+  void setQqShowEnabled(bool enabled) {
+    if (_qqShowEnabled == enabled) {
+      return;
+    }
+    _qqShowEnabled = enabled;
+    _notifyDiceOnly();
+  }
+
+  void clearQqMessages() {
+    if (_qqMessages.isEmpty) {
+      return;
+    }
+    _qqMessages.clear();
+    _notifyDiceOnly();
+  }
+
+  void _handleQqDiceMessage(String text) {
+    if (!_qqShowEnabled) {
+      return;
+    }
+    _qqMessages.add(QQMessageItem(text: text, receivedAt: DateTime.now()));
+    if (_qqMessages.length > 100) {
+      _qqMessages.removeRange(0, _qqMessages.length - 100);
+    }
+    pushFlowMessage('骰娘：$text', color: const Color(0xFF9BE7FF));
+    _notifyDiceOnly();
+  }
+
+  void _handleQqStatusChanged(QQGroupBridgeStatus status) {
+    _qqBridgeStatus = status;
+    _notifyDiceOnly();
+  }
+
+  void _notifyDiceOnly() {
+    _store._notifyStoreListeners(
+      notifyController: false,
+      notifyStage: false,
+      notifyLayerTree: false,
+      notifyAudio: false,
+      notifyDice: true,
+      notifyTransform: false,
+    );
+  }
+
   void pushFlowMessage(String text, {Color color = Colors.white}) {
     final trimmed = text.trim();
     if (trimmed.isEmpty) {
@@ -131,6 +204,11 @@ class _ProjectRuntimeDelegate {
         x: ProjectStore._flowLeftPadding,
         y: ProjectStore._flowTopPadding,
       ),
+    );
+    ExcalidrawOutputBridge.instance.pushMessage(
+      id: id,
+      text: trimmed,
+      colorValue: color.toARGB32(),
     );
     _recomputeFlowLayout();
     _ensureFlowTickerRunning();
@@ -509,6 +587,7 @@ class _ProjectRuntimeDelegate {
     _flowScrollOffset = 0;
     _flowTargetScrollOffset = 0;
     if (notify) {
+      ExcalidrawOutputBridge.instance.clear();
       _store._notifyStoreListeners(
         notifyController: true,
         notifyStage: true,
