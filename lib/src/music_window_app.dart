@@ -36,6 +36,10 @@ class _MusicWindowAppState extends State<MusicWindowApp> {
   double _volume = 0.3;
   bool _initialized = false;
   bool _volumeDragging = false;
+  bool _searchVisible = false;
+  String _query = '';
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
 
   @override
   void initState() {
@@ -107,6 +111,11 @@ class _MusicWindowAppState extends State<MusicWindowApp> {
       if (!_volumeDragging && volume is num) {
         _volume = volume.toDouble().clamp(0.0, 1.0);
       }
+      if (tracks.isEmpty) {
+        _searchVisible = false;
+        _query = '';
+        _searchController.clear();
+      }
       _initialized = true;
     });
   }
@@ -139,6 +148,8 @@ class _MusicWindowAppState extends State<MusicWindowApp> {
 
   @override
   void dispose() {
+    _searchController.dispose();
+    _searchFocusNode.dispose();
     DesktopMultiWindow.setMethodHandler(null);
     super.dispose();
   }
@@ -181,6 +192,62 @@ class _MusicWindowAppState extends State<MusicWindowApp> {
       _currentTrackId = trackId;
     });
     _send('music_set_track', {'trackId': trackId});
+  }
+
+  void _toggleSearch() {
+    if (_tracks.isEmpty) {
+      return;
+    }
+    setState(() {
+      _searchVisible = !_searchVisible;
+      if (!_searchVisible) {
+        _query = '';
+        _searchController.clear();
+      }
+    });
+    if (_searchVisible) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _searchFocusNode.requestFocus();
+        }
+      });
+    }
+  }
+
+  void _updateQuery(String value) {
+    setState(() {
+      _query = value;
+    });
+  }
+
+  void _clearQuery() {
+    _searchController.clear();
+    setState(() {
+      _query = '';
+    });
+  }
+
+  bool _matchesQuery(_MiniTrack track, String query) {
+    if (track.name.toLowerCase().contains(query)) {
+      return true;
+    }
+    for (final tag in track.tags) {
+      if (tag.toLowerCase().contains(query)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  List<_MiniTrack> get _visibleTracks {
+    final query = _query.trim().toLowerCase();
+    if (query.isEmpty) {
+      return _tracks;
+    }
+    return [
+      for (final track in _tracks)
+        if (_matchesQuery(track, query)) track,
+    ];
   }
 
   _MiniTrack? get _currentTrack {
@@ -270,15 +337,31 @@ class _MusicWindowAppState extends State<MusicWindowApp> {
         crossAxisAlignment: CrossAxisAlignment.center,
 
         children: [
-          Text(
-            _title,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w700,
-              color: _ink,
-              height: 1.25,
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 38),
+                  child: Text(
+                    _title,
+                    maxLines: 2,
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: _ink,
+                      height: 1.25,
+                    ),
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.topRight,
+                  child: _buildSearchToggleButton(hasTracks),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 14),
@@ -357,6 +440,34 @@ class _MusicWindowAppState extends State<MusicWindowApp> {
     );
   }
 
+  /// 播放器卡片右上角的圆形搜索按钮。
+  Widget _buildSearchToggleButton(bool enabled) {
+    final active = _searchVisible;
+    final iconColor = !enabled
+        ? const Color(0xFFB0BEC5)
+        : (active ? _accent : const Color(0xFF546E7A));
+    return Tooltip(
+      message: active ? '关闭搜索' : '搜索音频',
+      child: Material(
+        color: active ? _accentSoft : Colors.white,
+        shape: CircleBorder(
+          side: BorderSide(
+            color: active ? const Color(0xFFAFD8D2) : _cardBorder,
+          ),
+        ),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: enabled ? _toggleSearch : null,
+          child: SizedBox(
+            width: 32,
+            height: 32,
+            child: Icon(Icons.search_rounded, size: 18, color: iconColor),
+          ),
+        ),
+      ),
+    );
+  }
+
   IconData get _volumeIcon {
     if (_volume <= 0.001) {
       return Icons.volume_off_rounded;
@@ -422,10 +533,104 @@ class _MusicWindowAppState extends State<MusicWindowApp> {
   }
 
   Widget _buildTrackListCard() {
+    if (_tracks.isEmpty) {
+      return Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(color: Colors.white),
+        child: _buildEmptyState(),
+      );
+    }
+    final visibleTracks = _visibleTracks;
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(color: Colors.white),
-      child: _tracks.isEmpty ? _buildEmptyState() : _buildTrackList(),
+      child: Column(
+        children: [
+          if (_searchVisible) _buildSearchField(),
+          Expanded(
+            child: visibleTracks.isEmpty
+                ? _buildNoResultState()
+                : _buildTrackList(visibleTracks),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchField() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 6),
+      child: TextField(
+        controller: _searchController,
+        focusNode: _searchFocusNode,
+        style: const TextStyle(fontSize: 12.5, color: _ink),
+        decoration: InputDecoration(
+          isDense: true,
+          filled: true,
+          fillColor: const Color(0xFFF3F8FA),
+          hintText: '搜索名称或标签',
+          hintStyle: const TextStyle(fontSize: 12.5, color: Color(0xFF90A4AE)),
+          prefixIcon: const Icon(
+            Icons.search_rounded,
+            size: 17,
+            color: _muted,
+          ),
+          prefixIconConstraints: const BoxConstraints(
+            minWidth: 34,
+            minHeight: 30,
+          ),
+          suffixIcon: _query.isEmpty
+              ? null
+              : IconButton(
+                  onPressed: _clearQuery,
+                  tooltip: '清空',
+                  splashRadius: 14,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 32,
+                    minHeight: 28,
+                  ),
+                  icon: const Icon(
+                    Icons.close_rounded,
+                    size: 16,
+                    color: _muted,
+                  ),
+                ),
+          suffixIconConstraints: const BoxConstraints(
+            minWidth: 32,
+            minHeight: 28,
+          ),
+          contentPadding: const EdgeInsets.symmetric(vertical: 8),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide.none,
+          ),
+        ),
+        onChanged: _updateQuery,
+      ),
+    );
+  }
+
+  Widget _buildNoResultState() {
+    return const Center(
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.search_off_rounded, size: 26, color: Color(0xFFA9BBC4)),
+            SizedBox(height: 8),
+            Text(
+              '没有匹配的音频',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: _muted,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -458,17 +663,17 @@ class _MusicWindowAppState extends State<MusicWindowApp> {
     );
   }
 
-  Widget _buildTrackList() {
+  Widget _buildTrackList(List<_MiniTrack> tracks) {
     return ListView.separated(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      itemCount: _tracks.length,
+      padding: const EdgeInsets.only(bottom: 6),
+      itemCount: tracks.length,
       separatorBuilder: (context, index) => const Divider(
         height: 1,
         thickness: 1,
         indent: 38,
         color: Color(0xFFEEF3F6),
       ),
-      itemBuilder: (context, index) => _buildTrackTile(_tracks[index]),
+      itemBuilder: (context, index) => _buildTrackTile(tracks[index]),
     );
   }
 

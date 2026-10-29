@@ -19,6 +19,18 @@ AudioTrackModel? _findTrackById(
   return null;
 }
 
+bool _matchesTrackQuery(AudioTrackModel track, String query) {
+  if (track.name.toLowerCase().contains(query)) {
+    return true;
+  }
+  for (final tag in track.tags) {
+    if (tag.toLowerCase().contains(query)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 List<String> _parseTrackTagsInput(String raw) {
   final result = <String>[];
   final seen = <String>{};
@@ -512,10 +524,14 @@ class _DraggableTrackGrid extends StatefulWidget {
   const _DraggableTrackGrid({
     required this.facade,
     required this.tracks,
+    required this.originalIndexes,
   });
 
   final AudioControlFacade facade;
   final List<AudioTrackModel> tracks;
+
+  /// 过滤后曲目在完整列表中的下标，保证搜索状态下拖拽排序仍作用到正确位置。
+  final List<int> originalIndexes;
 
   @override
   State<_DraggableTrackGrid> createState() => _DraggableTrackGridState();
@@ -538,6 +554,7 @@ class _DraggableTrackGridState extends State<_DraggableTrackGrid> {
               for (var i = 0; i < widget.tracks.length; i++)
                 _buildDraggableItem(
                   index: i,
+                  trackIndex: widget.originalIndexes[i],
                   cardWidth: cardWidth,
                 ),
             ],
@@ -549,6 +566,7 @@ class _DraggableTrackGridState extends State<_DraggableTrackGrid> {
 
   Widget _buildDraggableItem({
     required int index,
+    required int trackIndex,
     required double cardWidth,
   }) {
     final track = widget.tracks[index];
@@ -574,8 +592,8 @@ class _DraggableTrackGridState extends State<_DraggableTrackGrid> {
         },
         onAcceptWithDetails: (details) {
           final fromIndex = details.data;
-          if (fromIndex != index) {
-            widget.facade.reorderTrack(fromIndex, index);
+          if (fromIndex != trackIndex) {
+            widget.facade.reorderTrack(fromIndex, trackIndex);
           }
           setState(() {
             _draggingIndex = null;
@@ -597,7 +615,7 @@ class _DraggableTrackGridState extends State<_DraggableTrackGrid> {
               child: _buildTrackCard(
                 facade: widget.facade,
                 track: track,
-                position: index,
+                position: trackIndex,
                 trackCount: widget.tracks.length,
                 isCurrent: isCurrent,
                 onDragHandleLongPress: () {
@@ -639,129 +657,271 @@ Future<void> showTrackLibraryDialog(
         child: SizedBox(
           width: 860,
           height: dialogHeight,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
-            child: ListenableBuilder(
-              listenable: facade.audioListenable,
-              builder: (context, _) {
-                final tracks = facade.tracks;
-                final currentTrack = _findTrackById(
-                  tracks,
-                  facade.audioState.currentTrackId,
-                );
-                var missingCount = 0;
-                for (final track in tracks) {
-                  if (facade.isTrackAssetMissing(track.id)) {
-                    missingCount += 1;
-                  }
-                }
-
-                return Column(
-                  mainAxisSize: MainAxisSize.max,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text(
-                      '音频库',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF3F7FA),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFFD9E4EA)),
-                      ),
-                      child: Text(
-                        tracks.isEmpty
-                            ? '还没有导入任何音频。'
-                            : '共 ${tracks.length} 首音频'
-                                '${currentTrack == null ? '，未选择当前曲目' : '，当前：${currentTrack.name}'}'
-                                '${missingCount > 0 ? '，$missingCount 首文件缺失' : ''}',
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: Color(0xFF455A64),
-                          height: 1.4,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    if (tracks.isNotEmpty) ...[
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: OutlinedButton.icon(
-                          onPressed: () async {
-                            await facade.importTrack();
-                          },
-                          icon: const Icon(
-                            Icons.file_upload_outlined,
-                            size: 18,
-                          ),
-                          label: const Text('导入 MP3'),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                    if (tracks.isEmpty)
-                      Expanded(
-                        child: Center(
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 20,
-                              vertical: 28,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF8FBFD),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: const Color(0xFFDCE6EC),
-                              ),
-                            ),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(
-                                  Icons.library_music_outlined,
-                                  size: 32,
-                                  color: Color(0xFF78909C),
-                                ),
-                                const SizedBox(height: 12),
-                                FilledButton.icon(
-                                  onPressed: () async {
-                                    await facade.importTrack();
-                                  },
-                                  icon: const Icon(
-                                    Icons.file_upload_outlined,
-                                    size: 18,
-                                  ),
-                                  label: const Text('导入 MP3'),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      )
-                    else
-                      Expanded(
-                        child: _DraggableTrackGrid(facade: facade, tracks: tracks),
-                      ),
-                  ],
-                );
-              },
-            ),
-          ),
+          child: _TrackLibraryDialogBody(facade: facade),
         ),
       );
     },
   );
+}
+
+class _TrackLibraryDialogBody extends StatefulWidget {
+  const _TrackLibraryDialogBody({required this.facade});
+
+  final AudioControlFacade facade;
+
+  @override
+  State<_TrackLibraryDialogBody> createState() =>
+      _TrackLibraryDialogBodyState();
+}
+
+class _TrackLibraryDialogBodyState extends State<_TrackLibraryDialogBody> {
+  final TextEditingController _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _updateQuery(String value) {
+    setState(() {
+      _query = value;
+    });
+  }
+
+  void _clearQuery() {
+    _searchController.clear();
+    setState(() {
+      _query = '';
+    });
+  }
+
+  List<int> _filteredIndexes(List<AudioTrackModel> tracks) {
+    final query = _query.trim().toLowerCase();
+    final indexes = <int>[];
+    for (var i = 0; i < tracks.length; i++) {
+      if (query.isEmpty || _matchesTrackQuery(tracks[i], query)) {
+        indexes.add(i);
+      }
+    }
+    return indexes;
+  }
+
+  Widget _buildSearchField() {
+    return TextField(
+      controller: _searchController,
+      style: const TextStyle(fontSize: 13, color: Color(0xFF37474F)),
+      decoration: InputDecoration(
+        isDense: true,
+        filled: true,
+        fillColor: const Color(0xFFF3F7FA),
+        hintText: '搜索音频名称或标签',
+        hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF90A4AE)),
+        prefixIcon: const Icon(
+          Icons.search_rounded,
+          size: 18,
+          color: Color(0xFF607D8B),
+        ),
+        prefixIconConstraints: const BoxConstraints(
+          minWidth: 38,
+          minHeight: 36,
+        ),
+        suffixIcon: _query.isEmpty
+            ? null
+            : IconButton(
+                onPressed: _clearQuery,
+                tooltip: '清空',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(
+                  minWidth: 30,
+                  minHeight: 30,
+                ),
+                icon: const Icon(
+                  Icons.close_rounded,
+                  size: 17,
+                  color: Color(0xFF607D8B),
+                ),
+              ),
+        suffixIconConstraints: const BoxConstraints(
+          minWidth: 34,
+          minHeight: 34,
+        ),
+        contentPadding: const EdgeInsets.symmetric(vertical: 10),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: Color(0xFFD9E4EA)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: Color(0xFFD9E4EA)),
+        ),
+      ),
+      onChanged: _updateQuery,
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8FBFD),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFDCE6EC)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.library_music_outlined,
+              size: 32,
+              color: Color(0xFF78909C),
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: () async {
+                await widget.facade.importTrack();
+              },
+              icon: const Icon(Icons.file_upload_outlined, size: 18),
+              label: const Text('导入 MP3'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoResultState() {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.search_off_rounded,
+            size: 30,
+            color: Color(0xFF90A4AE),
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            '没有匹配的音频',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF607D8B),
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: _clearQuery,
+            child: const Text('清空搜索'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
+      child: ListenableBuilder(
+        listenable: widget.facade.audioListenable,
+        builder: (context, _) {
+          final facade = widget.facade;
+          final tracks = facade.tracks;
+          final indexes = _filteredIndexes(tracks);
+          final filteredTracks = [
+            for (final index in indexes) tracks[index],
+          ];
+          final searching = _query.trim().isNotEmpty;
+          final currentTrack = _findTrackById(
+            tracks,
+            facade.audioState.currentTrackId,
+          );
+          var missingCount = 0;
+          for (final track in tracks) {
+            if (facade.isTrackAssetMissing(track.id)) {
+              missingCount += 1;
+            }
+          }
+
+          return Column(
+            mainAxisSize: MainAxisSize.max,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                '音频库',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF3F7FA),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFD9E4EA)),
+                ),
+                child: Text(
+                  tracks.isEmpty
+                      ? '还没有导入任何音频。'
+                      : '共 ${tracks.length} 首音频'
+                          '${searching ? '，匹配 ${filteredTracks.length} 首' : ''}'
+                          '${currentTrack == null ? '，未选择当前曲目' : '，当前：${currentTrack.name}'}'
+                          '${missingCount > 0 ? '，$missingCount 首文件缺失' : ''}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF455A64),
+                    height: 1.4,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (tracks.isNotEmpty) ...[
+                Row(
+                  children: [
+                    Expanded(child: _buildSearchField()),
+                    const SizedBox(width: 10),
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        await facade.importTrack();
+                      },
+                      icon: const Icon(
+                        Icons.file_upload_outlined,
+                        size: 18,
+                      ),
+                      label: const Text('导入 MP3'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+              ],
+              if (tracks.isEmpty)
+                Expanded(child: _buildEmptyState())
+              else if (filteredTracks.isEmpty)
+                Expanded(child: _buildNoResultState())
+              else
+                Expanded(
+                  child: _DraggableTrackGrid(
+                    facade: facade,
+                    tracks: filteredTracks,
+                    originalIndexes: indexes,
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
 }
 
 Future<void> copyText(BuildContext context, String text) async {

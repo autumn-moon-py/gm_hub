@@ -7,6 +7,7 @@ class _ProjectRuntimeDelegate {
       onStatusChanged: _handleQqStatusChanged,
     )..updateGroupId(_qqGroupId);
     unawaited(_qqBridge.start());
+    unawaited(_mausritterDiceBridge.start());
   }
 
   final ProjectStore _store;
@@ -29,7 +30,9 @@ class _ProjectRuntimeDelegate {
   bool _darkDiceEnabled = false;
   final List<QQMessageItem> _qqMessages = <QQMessageItem>[];
   late final QQGroupBridge _qqBridge;
-  String _qqGroupId = '138165759';
+  late final MausritterDiceBridgeServer _mausritterDiceBridge =
+      MausritterDiceBridgeServer(roll: rollDiceForExternal);
+  String _qqGroupId = '';
   bool _qqShowEnabled = false;
   QQGroupBridgeStatus _qqBridgeStatus = QQGroupBridgeStatus.disconnected;
 
@@ -85,6 +88,7 @@ class _ProjectRuntimeDelegate {
     _audioPlayer.dispose();
     _diceAudioPlayer.dispose();
     _qqBridge.dispose();
+    unawaited(_mausritterDiceBridge.stop());
     ExcalidrawOutputBridge.instance.dispose();
   }
 
@@ -252,11 +256,29 @@ class _ProjectRuntimeDelegate {
     if (result == null) {
       return '骰子公式无效：$expression';
     }
+    final summary = _settleDiceResult(result);
+    return '$summary\n详细结果: ${result.detail}';
+  }
+
+  /// 外部页面（辅助表等）投递的公式：结算并推送到展示端，
+  /// 返回与骰面卡一致的紧凑文本；null 表示公式无效。
+  String? rollDiceForExternal(String expression) {
+    final result = _rollDiceInternal(expression);
+    if (result == null) {
+      return null;
+    }
+    _settleDiceResult(result);
+    return result.compact;
+  }
+
+  String _settleDiceResult(_DiceRollResult result) {
     final exprForDisplay = _formatDiceExpressionForDisplay(result.normalized);
     final summary = '掷出了 $exprForDisplay=${result.total}';
-    final detailed = '$summary\n详细结果: ${result.detail}';
-    _pushDiceResult(summary: summary, detailed: detailed);
-    return detailed;
+    _pushDiceResult(
+      summary: summary,
+      detailed: '$summary\n详细结果: ${result.detail}',
+    );
+    return summary;
   }
 
   String rollPresetDice(int sides) {
@@ -355,10 +377,7 @@ class _ProjectRuntimeDelegate {
     return detailed;
   }
 
-  void _pushDiceResult({
-    required String summary,
-    required String detailed,
-  }) {
+  void _pushDiceResult({required String summary, required String detailed}) {
     final flowText = _darkDiceEnabled ? '黑暗的角落里，传来命运转动的声音' : summary;
     async_lib.unawaited(_playDiceSound());
     pushFlowMessage(flowText, color: const Color(0xFFFFF59D));
@@ -369,8 +388,10 @@ class _ProjectRuntimeDelegate {
       await _diceAudioPlayer.stop();
       await _diceAudioPlayer.setReleaseMode(ReleaseMode.stop);
       await _diceAudioPlayer.setVolume(0.35);
-      await _diceAudioPlayer.play(AssetSource('骰子.mp3'),
-          mode: PlayerMode.lowLatency);
+      await _diceAudioPlayer.play(
+        AssetSource('骰子.mp3'),
+        mode: PlayerMode.lowLatency,
+      );
     } catch (_) {
       // 骰子音效失败不影响主流程。
     }
@@ -420,10 +441,7 @@ class _ProjectRuntimeDelegate {
             )
           : await _store._fileService.importAudioFile(file.path);
       if (_store._project.formatVersion == 2) {
-        _store._assetBytes = {
-          ..._store._assetBytes,
-          nextPath: bytes,
-        };
+        _store._assetBytes = {..._store._assetBytes, nextPath: bytes};
       }
       final nextTracks = _store._project.tracks
           .map(
@@ -529,10 +547,12 @@ class _ProjectRuntimeDelegate {
     _store._project = _store._project.copyWith(
       tracks: nextTracks,
       audioState: _store._project.audioState.copyWith(
-        currentTrackId:
-            deletedCurrentTrack ? nextCurrentTrackId : currentTrackId,
-        isPlaying:
-            shouldStopSession ? false : _store._project.audioState.isPlaying,
+        currentTrackId: deletedCurrentTrack
+            ? nextCurrentTrackId
+            : currentTrackId,
+        isPlaying: shouldStopSession
+            ? false
+            : _store._project.audioState.isPlaying,
       ),
     );
     _setAudioError(null);
@@ -650,7 +670,8 @@ class _ProjectRuntimeDelegate {
   }
 
   void _recomputeFlowLayout() {
-    final contentHeight = ProjectStore._flowTopPadding +
+    final contentHeight =
+        ProjectStore._flowTopPadding +
         _flowMessages.length * ProjectStore._flowRowHeight +
         ProjectStore._flowBottomPadding;
     _flowTargetScrollOffset = math.max(0.0, contentHeight - _flowAreaHeight);
@@ -660,7 +681,8 @@ class _ProjectRuntimeDelegate {
     for (var i = 0; i < _flowMessages.length; i++) {
       final msg = _flowMessages[i];
       msg.x = ProjectStore._flowLeftPadding;
-      msg.y = ProjectStore._flowTopPadding +
+      msg.y =
+          ProjectStore._flowTopPadding +
           i * ProjectStore._flowRowHeight -
           _flowScrollOffset;
     }
@@ -697,8 +719,10 @@ class _ProjectRuntimeDelegate {
   }
 
   _DiceRollResult? _rollDiceInternal(String expression) {
-    final normalized =
-        expression.toLowerCase().replaceAll(' ', '').replaceAll('-', '+-');
+    final normalized = expression
+        .toLowerCase()
+        .replaceAll(' ', '')
+        .replaceAll('-', '+-');
     if (normalized.isEmpty) {
       return null;
     }
@@ -714,6 +738,9 @@ class _ProjectRuntimeDelegate {
 
     var total = 0;
     final details = <String>[];
+    final parts = <String>[];
+    var diceTokens = 0;
+    var needsTotal = false;
     for (final token in tokens) {
       var sign = 1;
       var body = token;
@@ -746,10 +773,17 @@ class _ProjectRuntimeDelegate {
           part += roll;
         }
         total += part * sign;
+        diceTokens += 1;
+        if (tokens.length > 1 || count > 1) {
+          needsTotal = true;
+        }
         final prefix = sign < 0 ? '-' : (details.isEmpty ? '' : '+');
-        details.add('$prefix$count'
-            'd$sides'
-            '[${rolls.join(',')}]');
+        details.add(
+          '$prefix$count'
+          'd$sides'
+          '[${rolls.join(',')}]',
+        );
+        parts.add('$prefix${count}d$sides=${rolls.join('+')}');
       } else {
         final value = int.tryParse(body);
         if (value == null) {
@@ -758,12 +792,19 @@ class _ProjectRuntimeDelegate {
         total += value * sign;
         final prefix = sign < 0 ? '-' : (details.isEmpty ? '' : '+');
         details.add('$prefix$value');
+        parts.add('$prefix$value');
       }
     }
+    final compact = diceTokens == 0
+        ? '$total'
+        : needsTotal
+        ? '${parts.join()}=$total'
+        : parts.join();
     return _DiceRollResult(
       normalized: normalized,
       total: total,
       detail: details.join(' '),
+      compact: compact,
     );
   }
 
@@ -788,8 +829,8 @@ class _ProjectRuntimeDelegate {
     final stepDelayMilliseconds = fadeStepCount <= 1
         ? 0
         : (ProjectStore._audioFadeTotalDuration.inMilliseconds /
-                (fadeStepCount - 1))
-            .round();
+                  (fadeStepCount - 1))
+              .round();
     final stepDelay = stepDelayMilliseconds <= 0
         ? Duration.zero
         : Duration(milliseconds: stepDelayMilliseconds);
@@ -822,8 +863,9 @@ class _ProjectRuntimeDelegate {
     if (trackId == null && _store._project.tracks.isNotEmpty) {
       trackId = _store._project.tracks.first.id;
       _store._project = _store._project.copyWith(
-        audioState:
-            _store._project.audioState.copyWith(currentTrackId: trackId),
+        audioState: _store._project.audioState.copyWith(
+          currentTrackId: trackId,
+        ),
       );
     }
     if (trackId == null) {
@@ -831,8 +873,9 @@ class _ProjectRuntimeDelegate {
       return false;
     }
     final track = _store._findTrackById(trackId);
-    final absPath =
-        track == null ? null : _store._resolveAssetAbsolutePath(track.asset);
+    final absPath = track == null
+        ? null
+        : _store._resolveAssetAbsolutePath(track.asset);
     if (absPath == null || absPath.isEmpty || !File(absPath).existsSync()) {
       _setAudioError(track == null ? '音频路径无效。' : '未找到音频文件：${track.asset}');
       return false;
@@ -877,8 +920,9 @@ class _ProjectRuntimeDelegate {
   async_lib.Future<void> _switchTrackWithFade(int transitionVersion) async {
     _isSwitchingTrackWithFade = true;
     try {
-      final fadeOutStartVolume =
-          _store._project.audioState.volume.clamp(0.0, 1.0).toDouble();
+      final fadeOutStartVolume = _store._project.audioState.volume
+          .clamp(0.0, 1.0)
+          .toDouble();
       final fadedOut = await _fadePlayerVolume(
         from: fadeOutStartVolume,
         to: 0,
@@ -908,8 +952,9 @@ class _ProjectRuntimeDelegate {
         return;
       }
 
-      final fadeInTargetVolume =
-          _store._project.audioState.volume.clamp(0.0, 1.0).toDouble();
+      final fadeInTargetVolume = _store._project.audioState.volume
+          .clamp(0.0, 1.0)
+          .toDouble();
       final fadedIn = await _fadePlayerVolume(
         from: 0,
         to: fadeInTargetVolume,

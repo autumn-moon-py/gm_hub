@@ -16,7 +16,8 @@ import 'package:path/path.dart' as p;
 import '../model/battle_model.dart';
 import '../model/project_model.dart';
 import '../model/render_item.dart';
-import '../service/excalidraw_output_bridge.dart';
+import '../service/bridge/excalidraw/excalidraw_output_bridge.dart';
+import '../service/bridge/mausritter/mausritter_dice_bridge_server.dart';
 import '../service/qq_group_bridge.dart';
 import 'asset_cache_service.dart';
 import 'asset_resolver.dart';
@@ -693,9 +694,13 @@ class _DiceRollResult {
   final int total;
   final String detail;
 
+  /// 与辅助表骰面卡一致的紧凑展示，例如 `2d6=3+4=7`。
+  final String compact;
+
   const _DiceRollResult({
     required this.normalized,
     required this.total,
     required this.detail,
+    required this.compact,
   });
 }

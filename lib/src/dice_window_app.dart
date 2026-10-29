@@ -22,33 +22,42 @@ class _DiceWindowAppState extends State<DiceWindowApp> {
   String _fateModifierMode = 'none';
   String _lastResult = '';
   bool _darkDice = false;
-  bool _initialized = false;
 
   @override
   void initState() {
     super.initState();
-    _initState();
+    _loadInitialState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _setAlwaysOnTop();
     });
   }
 
-  Future<void> _initState() async {
+  /// 主窗口状态只做异步补齐，窗口先渲染，避免握手未返回时整窗空白。
+  Future<void> _loadInitialState() async {
     try {
-      final state =
-          await DesktopMultiWindow.invokeMethod(0, 'dice_get_state', {});
-      if (state is Map) {
+      final state = await DesktopMultiWindow.invokeMethod(
+        0,
+        'dice_get_state',
+        {},
+      ).timeout(const Duration(seconds: 2));
+      if (!mounted || state is! Map) {
+        return;
+      }
+      setState(() {
         _darkDice = state['darkDice'] == true;
         _lastResult = state['lastResult'] ?? '';
         final bonus = state['fateDefaultBonus'];
         if (bonus != null) {
           _fateBonusController.text = bonus.toString();
         }
+      });
+    } catch (_) {
+      // 握手失败只提示，不影响窗口渲染与后续重试。
+      if (!mounted) {
+        return;
       }
-    } catch (_) {}
-    if (mounted) {
       setState(() {
-        _initialized = true;
+        _lastResult = '未能连接主窗口，投掷暂不可用。';
       });
     }
   }
@@ -220,7 +229,7 @@ class _DiceWindowAppState extends State<DiceWindowApp> {
       ),
       home: Scaffold(
         backgroundColor: const Color(0xFFF5F9FC),
-        body: _initialized ? _buildPanel() : const SizedBox.shrink(),
+        body: _buildPanel(),
       ),
     );
   }
