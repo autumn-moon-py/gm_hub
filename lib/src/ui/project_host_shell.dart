@@ -16,29 +16,68 @@ class ProjectHostShell extends GetView<ProjectController> {
 
   @override
   Widget build(BuildContext context) {
-    return GetBuilder<ProjectController>(
-      builder: (controller) {
-        final currentMode = controller.store.project.currentMode;
-        final body = currentMode == ProjectMode.battle
-            ? const BattleShell()
-            : const MainShell();
-        return Scaffold(
-          appBar: MainShellAppBar(controller: controller),
-          body: CallbackShortcuts(
-            bindings: {
-              const SingleActivator(LogicalKeyboardKey.keyS, control: true):
-                  () {
-                unawaited(
-                    saveProjectWithFeedback(context, controller));
-              },
-            },
-            child: Focus(
-              autofocus: true,
-              child: body,
-            ),
-          ),
-        );
-      },
+    return _SaveShortcutHandler(
+      controller: controller,
+      child: GetBuilder<ProjectController>(
+        builder: (controller) {
+          final currentMode = controller.store.project.currentMode;
+          final body = currentMode == ProjectMode.battle
+              ? const BattleShell()
+              : const MainShell();
+          return Scaffold(
+            appBar: MainShellAppBar(controller: controller),
+            body: body,
+          );
+        },
+      ),
     );
+  }
+}
+
+/// 用 HardwareKeyboard 全局监听 Ctrl+S，避免焦点不在 Shortcuts 子树时失效。
+class _SaveShortcutHandler extends StatefulWidget {
+  const _SaveShortcutHandler({
+    required this.controller,
+    required this.child,
+  });
+
+  final ProjectController controller;
+  final Widget child;
+
+  @override
+  State<_SaveShortcutHandler> createState() => _SaveShortcutHandlerState();
+}
+
+class _SaveShortcutHandlerState extends State<_SaveShortcutHandler> {
+  @override
+  void initState() {
+    super.initState();
+    HardwareKeyboard.instance.addHandler(_handleKeyEvent);
+  }
+
+  @override
+  void dispose() {
+    HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
+    super.dispose();
+  }
+
+  bool _handleKeyEvent(KeyEvent event) {
+    if (event is! KeyDownEvent ||
+        event.logicalKey != LogicalKeyboardKey.keyS) {
+      return false;
+    }
+    final keyboard = HardwareKeyboard.instance;
+    if (!keyboard.isControlPressed ||
+        keyboard.isShiftPressed ||
+        keyboard.isAltPressed) {
+      return false;
+    }
+    unawaited(saveProjectWithFeedback(context, widget.controller));
+    return true;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return widget.child;
   }
 }

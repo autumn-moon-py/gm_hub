@@ -332,6 +332,11 @@ class ProjectController extends GetxController {
   }
 
   Future<bool> saveProject() async {
+    final filePath = store.projectFilePath;
+    if (filePath == null || filePath.isEmpty) {
+      // 新项目还没有落盘路径，保存时先让用户选择位置
+      return saveProjectAs();
+    }
     final saveSw = Stopwatch()..start();
     final ok = await store.saveProject();
     if (ok) {
