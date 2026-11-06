@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../controller/project_controller.dart';
-import '../../model/battle_model.dart';
 import '../../store/project_store.dart';
-import '../facade/project_ui_facade.dart';
 
 Widget buildMainMenuButton({
   required BuildContext context,
@@ -75,52 +73,8 @@ Widget buildMainMenuButton({
 
 List<Widget> buildMainShellActions({
   required ProjectController controller,
-  BattleShellFacade? battleFacade,
 }) {
-  final currentMode = controller.store.project.currentMode;
-  final isBattleMode = currentMode == ProjectMode.battle;
-  final showingBattle = isBattleMode &&
-      (battleFacade?.battle.workspace.outputShowingBattle ?? false);
   return [
-    Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-      child: SegmentedButton<ProjectMode>(
-        showSelectedIcon: false,
-        segments: const [
-          ButtonSegment<ProjectMode>(
-            value: ProjectMode.scene,
-            label: Text('场景'),
-          ),
-          ButtonSegment<ProjectMode>(
-            value: ProjectMode.battle,
-            label: Text('战斗'),
-          ),
-        ],
-        selected: <ProjectMode>{currentMode},
-        onSelectionChanged: (selection) {
-          final mode = selection.first;
-          if (mode == ProjectMode.scene) {
-            controller.switchToSceneMode();
-            return;
-          }
-          controller.switchToBattleMode();
-        },
-      ),
-    ),
-    if (isBattleMode && battleFacade != null) ...[
-      const SizedBox(width: 8),
-      Text(
-        '上屏',
-        style: ThemeData.fallback().textTheme.bodyMedium,
-      ),
-      Transform.scale(
-        scale: 0.82,
-        child: Switch(
-          value: showingBattle,
-          onChanged: battleFacade.setBattleOutputShowing,
-        ),
-      ),
-    ],
     TextButton(
       onPressed: controller.openOutputWindow,
       child: const Text('输出窗口'),

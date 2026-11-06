@@ -13,7 +13,6 @@ import 'package:image/image.dart' as img;
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path/path.dart' as p;
 
-import '../model/battle_model.dart';
 import '../model/project_model.dart';
 import '../model/render_item.dart';
 import '../service/bridge/excalidraw/excalidraw_output_bridge.dart';
@@ -26,7 +25,6 @@ import 'project_file_service.dart';
 import 'project_migrator.dart';
 
 part 'project_store_project_ops.dart';
-part 'project_store_battle_ops.dart';
 part 'project_store_node_ops.dart';
 part 'project_store_runtime_ops.dart';
 part 'project_store_runtime_delegate.dart';
@@ -111,7 +109,6 @@ class ProjectStore extends ChangeNotifier {
   final ChangeNotifier _audioNotifier = ChangeNotifier();
   final ChangeNotifier _diceNotifier = ChangeNotifier();
   final ChangeNotifier _transformNotifier = ChangeNotifier();
-  final ChangeNotifier _battleNotifier = ChangeNotifier();
   final ChangeNotifier _globalLoadingNotifier = ChangeNotifier();
   final Map<String, ChangeNotifier> _nodeSelectionNotifiers =
       <String, ChangeNotifier>{};
@@ -187,7 +184,6 @@ class ProjectStore extends ChangeNotifier {
   Listenable get audioListenable => _audioNotifier;
   Listenable get diceListenable => _diceNotifier;
   Listenable get transformListenable => _transformNotifier;
-  Listenable get battleListenable => _battleNotifier;
   Listenable selectionListenableForNode(String nodeId) {
     return _nodeSelectionNotifiers.putIfAbsent(nodeId, ChangeNotifier.new);
   }
@@ -262,7 +258,6 @@ class ProjectStore extends ChangeNotifier {
     _invalidateDerivedCaches(renderList: true, assetExists: true);
     _assetSizeCache.clear();
     _refreshIdSeedFromProject();
-    _refreshIdSeedFromBattle();
     _markLatestProjectJsonDirty();
     _notifySelectionListeners(
       previousSelectedIds: previousSelectedIds,
@@ -350,10 +345,6 @@ class ProjectStore extends ChangeNotifier {
     }
   }
 
-  void _notifyBattleListeners() {
-    _battleNotifier.notifyListeners();
-  }
-
   void _invalidateDerivedCaches({
     bool renderList = true,
     bool assetExists = false,
@@ -385,19 +376,6 @@ class ProjectStore extends ChangeNotifier {
     for (final track in _project.tracks) {
       if (track.asset.isNotEmpty && !p.isAbsolute(track.asset)) {
         used.add(track.asset);
-      }
-    }
-    // battle 立绘引用(相对路径)一并保护,防止内嵌后误删
-    for (final t in _project.battle.library.npcTemplates) {
-      final a = t.portrait?.asset;
-      if (a != null && a.isNotEmpty && !p.isAbsolute(a)) {
-        used.add(a);
-      }
-    }
-    for (final r in _project.battle.library.playerResources) {
-      final a = r.portrait?.asset;
-      if (a != null && a.isNotEmpty && !p.isAbsolute(a)) {
-        used.add(a);
       }
     }
     // 保留 undo 栈可达的资源,防止撤销删除/替换后资源丢失
@@ -469,7 +447,6 @@ class ProjectStore extends ChangeNotifier {
     _audioNotifier.dispose();
     _diceNotifier.dispose();
     _transformNotifier.dispose();
-    _battleNotifier.dispose();
     _globalLoadingNotifier.dispose();
     _runtime.dispose();
     super.dispose();

@@ -1,4 +1,3 @@
-import '../model/battle_model.dart';
 import '../model/render_item.dart';
 import 'sync_render_payload.dart';
 
@@ -9,8 +8,6 @@ class OutputSyncState {
     required this.canvasWidth,
     required this.canvasHeight,
     required this.outputScaleMode,
-    required this.currentMode,
-    required this.battle,
     required this.lastSyncAt,
     required this.lastSyncError,
   });
@@ -21,8 +18,6 @@ class OutputSyncState {
         canvasWidth = 1920,
         canvasHeight = 1080,
         outputScaleMode = 'stretch',
-        currentMode = ProjectMode.scene,
-        battle = null,
         lastSyncAt = null,
         lastSyncError = null;
 
@@ -31,8 +26,6 @@ class OutputSyncState {
   final double canvasWidth;
   final double canvasHeight;
   final String outputScaleMode;
-  final ProjectMode currentMode;
-  final SyncBattlePayload? battle;
   final DateTime? lastSyncAt;
   final String? lastSyncError;
 
@@ -43,8 +36,6 @@ class OutputSyncState {
       canvasWidth: canvasWidth,
       canvasHeight: canvasHeight,
       outputScaleMode: outputScaleMode,
-      currentMode: currentMode,
-      battle: battle,
       lastSyncAt: lastSyncAt,
       lastSyncError: error,
     );
@@ -56,8 +47,6 @@ class OutputSyncState {
     required double canvasWidth,
     required double canvasHeight,
     required String outputScaleMode,
-    required ProjectMode currentMode,
-    required SyncBattlePayload? battle,
     required DateTime syncedAt,
   }) {
     return OutputSyncState(
@@ -66,8 +55,6 @@ class OutputSyncState {
       canvasWidth: canvasWidth,
       canvasHeight: canvasHeight,
       outputScaleMode: outputScaleMode,
-      currentMode: currentMode,
-      battle: battle,
       lastSyncAt: syncedAt,
       lastSyncError: null,
     );

@@ -156,11 +156,13 @@ extension ProjectStoreRuntimeOps on ProjectStore {
     int count = 4,
     int bonus = 0,
     FateDiceModifierMode modifierMode = FateDiceModifierMode.none,
+    int? difficulty,
   }) {
     return _runtime.rollFateDice(
       count: count,
       bonus: bonus,
       modifierMode: modifierMode,
+      difficulty: difficulty,
     );
   }
 

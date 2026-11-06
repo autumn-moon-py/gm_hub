@@ -49,19 +49,6 @@ class ProjectMigrator {
         refs.add(AssetRefEntry(absolutePath: track.asset, kind: AssetRefKind.audio));
       }
     }
-    // battle 立绘引用(battle.library 的 npcTemplates/playerResources)
-    for (final t in model.battle.library.npcTemplates) {
-      final a = t.portrait?.asset;
-      if (a != null && a.isNotEmpty) {
-        refs.add(AssetRefEntry(absolutePath: a, kind: AssetRefKind.portrait));
-      }
-    }
-    for (final r in model.battle.library.playerResources) {
-      final a = r.portrait?.asset;
-      if (a != null && a.isNotEmpty) {
-        refs.add(AssetRefEntry(absolutePath: a, kind: AssetRefKind.portrait));
-      }
-    }
     return refs;
   }
 

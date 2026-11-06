@@ -208,14 +208,11 @@ extension ProjectStoreProjectOps on ProjectStore {
     if (loaded != null) {
       _project = loaded.model;
       _injectResolver(loaded.resolver, loaded.assetMap);
-      _repairDuplicateBattleIds();
       _invalidateDerivedCaches(assetExists: true);
       _refreshIdSeedFromProject();
-      _refreshIdSeedFromBattle();
       _restoreStoredUiState();
       _markLatestProjectJsonDirty();
       await _applyAudioStateToPlayer();
-      _notifyBattleListeners();
       _notifyStoreListeners();
       return;
     }
@@ -225,9 +222,7 @@ extension ProjectStoreProjectOps on ProjectStore {
       const <String, List<int>>{},
     );
     _refreshIdSeedFromProject();
-    _refreshIdSeedFromBattle();
     await _applyAudioStateToPlayer();
-    _notifyBattleListeners();
     _onProjectChanged();
   }
 
@@ -249,10 +244,8 @@ extension ProjectStoreProjectOps on ProjectStore {
     _injectResolver(result.resolver, result.assetMap);
     _project = result.model;
 
-    _repairDuplicateBattleIds();
     _invalidateDerivedCaches(assetExists: true);
     _refreshIdSeedFromProject();
-    _refreshIdSeedFromBattle();
     _assetSizeCache.clear();
     _restoreStoredUiState();
     _selection = null;
@@ -260,7 +253,6 @@ extension ProjectStoreProjectOps on ProjectStore {
     _resetRuntimeUiState();
     _markLatestProjectJsonDirty();
     await _applyAudioStateToPlayer();
-    _notifyBattleListeners();
     _notifyStoreListeners();
   }
 
@@ -284,7 +276,6 @@ extension ProjectStoreProjectOps on ProjectStore {
     );
     _invalidateDerivedCaches(assetExists: true);
     _refreshIdSeedFromProject();
-    _refreshIdSeedFromBattle();
     _selection = null;
     _selectedIds.clear();
     _restoreStoredUiState();
@@ -292,7 +283,6 @@ extension ProjectStoreProjectOps on ProjectStore {
     _assetSizeCache.clear();
     _markLatestProjectJsonDirty();
     await _applyAudioStateToPlayer();
-    _notifyBattleListeners();
     _notifyStoreListeners();
   }
 
@@ -380,7 +370,6 @@ extension ProjectStoreProjectOps on ProjectStore {
     );
     _invalidateDerivedCaches(assetExists: true);
     _refreshIdSeedFromProject();
-    _refreshIdSeedFromBattle();
     _selection = null;
     _selectedIds.clear();
     _restoreStoredUiState();
@@ -388,7 +377,6 @@ extension ProjectStoreProjectOps on ProjectStore {
     _assetSizeCache.clear();
     _markLatestProjectJsonDirty();
     await _applyAudioStateToPlayer();
-    _notifyBattleListeners();
     _notifyStoreListeners();
     await _saveNow();
   }

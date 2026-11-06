@@ -289,6 +289,7 @@ class _ProjectRuntimeDelegate {
     int count = 4,
     int bonus = 0,
     FateDiceModifierMode modifierMode = FateDiceModifierMode.none,
+    int? difficulty,
   }) {
     final diceCount = count <= 0 ? 4 : count;
     final rolls = List<int>.generate(diceCount, (_) => _random.nextInt(3) - 1);
@@ -319,42 +320,8 @@ class _ProjectRuntimeDelegate {
       return '0';
     }
 
-    String cocDifficulty;
-    int hpMark;
-    if (baseTotal == -4) {
-      cocDifficulty = '大失败';
-      hpMark = 4;
-    } else if (baseTotal == 4) {
-      cocDifficulty = '大成功';
-      hpMark = 4;
-    } else if (totalResult <= -1) {
-      cocDifficulty = '失败';
-      hpMark = 0;
-    } else if (totalResult >= 0 && totalResult <= 3) {
-      cocDifficulty = '常规';
-      hpMark = 1;
-    } else if (totalResult >= 4 && totalResult <= 6) {
-      cocDifficulty = '困难';
-      hpMark = 2;
-    } else if (totalResult >= 7) {
-      cocDifficulty = '极难';
-      hpMark = 3;
-    } else {
-      cocDifficulty = '未定义';
-      hpMark = 0;
-    }
-
     final diceText = rolls.map(valueLabel).join(', ');
-    final summary = '掷出了 命运骰=$totalResult';
-    final bonusText = '数值加值: ${bonus >= 0 ? '+' : '-'}${bonus.abs()}';
-    String modifierText;
-    if (modifierMode == FateDiceModifierMode.advantage) {
-      modifierText = '额外修正: 优势 d2=$modifierRoll';
-    } else if (modifierMode == FateDiceModifierMode.disadvantage) {
-      modifierText = '额外修正: 劣势 d2=$modifierRoll';
-    } else {
-      modifierText = '额外修正: 无';
-    }
+    final summary = '掷出了 命运骰=[$diceText]';
     final totalSegments = <String>[baseTotal.toString()];
     if (bonus != 0) {
       totalSegments.add('${bonus >= 0 ? '+' : '-'} ${bonus.abs()}');
@@ -364,17 +331,25 @@ class _ProjectRuntimeDelegate {
       totalSegments.add('$sign $modifierRoll');
     }
     final totalLine = '总结果: ${totalSegments.join(' ')} = $totalResult';
-    final detailed = [
-      summary,
-      '本次结果: [$diceText]',
-      bonusText,
-      modifierText,
-      totalLine,
-      'CoC判定: $cocDifficulty',
-      '标记血量: $hpMark',
-    ].join('\n');
+    final detailedLines = <String>[summary, totalLine];
+    if (difficulty != null) {
+      final diff = math.max(0, difficulty - totalResult);
+      final hp = _hpFromDiff(diff);
+      detailedLines.add('伤害档次: $diff');
+      if (diff > 0) {
+        detailedLines.add('标记血量: $hp');
+      }
+    }
+    final detailed = detailedLines.join('\n');
     _pushDiceResult(summary: summary, detailed: detailed);
     return detailed;
+  }
+
+  int _hpFromDiff(int diff) {
+    if (diff <= 2) return 1;
+    if (diff <= 4) return 2;
+    if (diff <= 6) return 3;
+    return 4;
   }
 
   void _pushDiceResult({required String summary, required String detailed}) {
@@ -392,9 +367,7 @@ class _ProjectRuntimeDelegate {
         AssetSource('骰子.mp3'),
         mode: PlayerMode.lowLatency,
       );
-    } catch (_) {
-      // 骰子音效失败不影响主流程。
-    }
+    } catch (_) {}
   }
 
   void setTrack(String? trackId) {

@@ -5,9 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
-import 'model/battle_model.dart';
 import 'model/project_model.dart';
-import 'output/battle_output_view.dart';
 import 'output/output_layout.dart';
 import 'output/output_render_tile.dart';
 import 'output/output_sync_parser.dart';
@@ -177,22 +175,11 @@ class _OutputWindowAppState extends State<OutputWindowApp> {
         _scheduleFlowScrollToBottom();
       }
     }
-    final isBattleMode = _syncState.currentMode == ProjectMode.battle;
-    final showingBattle =
-        isBattleMode && (_syncState.battle?.showingBattle ?? false);
     return Stack(
       clipBehavior: Clip.hardEdge,
       children: [
         Positioned.fill(
-          child: showingBattle
-              ? BattleOutputView(
-                  battle: _syncState.battle!,
-                  canvasWidth: _syncState.canvasWidth,
-                  canvasHeight: _syncState.canvasHeight,
-                  outputScaleMode: _syncState.outputScaleMode,
-                  backgroundItems: _syncState.renderList,
-                )
-              : _buildSceneOutput(hasFlowMessages: hasFlowMessages),
+          child: _buildSceneOutput(hasFlowMessages: hasFlowMessages),
         ),
         if (hasFlowMessages) _buildFlowMessageOverlay(),
       ],

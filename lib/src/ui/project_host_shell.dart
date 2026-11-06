@@ -5,8 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
 import '../controller/project_controller.dart';
-import '../model/battle_model.dart';
-import 'battle_shell.dart';
 import 'main_shell.dart';
 import 'main_shell/main_shell_actions.dart';
 import 'main_shell/main_shell_app_bar.dart';
@@ -18,17 +16,9 @@ class ProjectHostShell extends GetView<ProjectController> {
   Widget build(BuildContext context) {
     return _SaveShortcutHandler(
       controller: controller,
-      child: GetBuilder<ProjectController>(
-        builder: (controller) {
-          final currentMode = controller.store.project.currentMode;
-          final body = currentMode == ProjectMode.battle
-              ? const BattleShell()
-              : const MainShell();
-          return Scaffold(
-            appBar: MainShellAppBar(controller: controller),
-            body: body,
-          );
-        },
+      child: Scaffold(
+        appBar: MainShellAppBar(controller: controller),
+        body: const MainShell(),
       ),
     );
   }

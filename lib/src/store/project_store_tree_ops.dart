@@ -76,17 +76,6 @@ extension ProjectStoreTreeOps on ProjectStore {
       collect(track.id);
     }
 
-    final battle = _project.battle;
-    for (final template in battle.library.npcTemplates) {
-      collect(template.id);
-    }
-    for (final resource in battle.library.playerResources) {
-      collect(resource.id);
-    }
-    for (final entity in battle.workspace.entities) {
-      collect(entity.id);
-    }
-
     var nextNumber = 1;
     while (usedNumbers.contains(nextNumber)) {
       nextNumber += 1;

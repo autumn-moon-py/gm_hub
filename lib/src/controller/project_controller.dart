@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
-import '../model/battle_model.dart';
 import '../output/sync_render_payload.dart';
 import '../store/project_store.dart';
 
@@ -30,18 +29,6 @@ class ProjectController extends GetxController {
   bool get outputWindowOpen => _outputWindowId != null;
   bool get diceWindowOpen => _diceWindowId != null;
   bool get musicWindowOpen => _musicWindowId != null;
-
-  void switchToSceneMode() {
-    store.setProjectMode(ProjectMode.scene);
-    update();
-    _scheduleOutputSync(force: true);
-  }
-
-  void switchToBattleMode() {
-    store.setProjectMode(ProjectMode.battle);
-    update();
-    _scheduleOutputSync(force: true);
-  }
 
   @override
   void onInit() {

@@ -8,19 +8,15 @@ import '../../store/project_store.dart';
 import '../facade/project_ui_facade.dart';
 import 'dice/dice_preset_button.dart';
 
-enum DicePanelMode { scene, battle }
-
 class DicePanel extends StatefulWidget {
   final DiceControlFacade facade;
   final EdgeInsetsGeometry margin;
-  final DicePanelMode mode;
   final int fateDefaultBonus;
 
   const DicePanel({
     super.key,
     required this.facade,
     this.margin = const EdgeInsets.fromLTRB(12, 12, 0, 12),
-    this.mode = DicePanelMode.scene,
     this.fateDefaultBonus = 0,
   });
 
@@ -31,11 +27,13 @@ class DicePanel extends StatefulWidget {
 class _DicePanelState extends State<DicePanel> {
   final TextEditingController _formulaController = TextEditingController();
   late final TextEditingController _fateBonusController;
+  late final TextEditingController _fateDifficultyController;
   late final TextEditingController _qqGroupController;
   final ScrollController _feedScrollController = ScrollController();
   final List<_DiceFeedEntry> _feed = <_DiceFeedEntry>[];
   int _seenQqCount = 0;
   bool _feedScrollScheduled = false;
+  bool _fateDifficultyVisible = false;
   FateDiceModifierMode _fateModifierMode = FateDiceModifierMode.none;
 
   @override
@@ -44,6 +42,7 @@ class _DicePanelState extends State<DicePanel> {
     _fateBonusController = TextEditingController(
       text: widget.fateDefaultBonus.toString(),
     );
+    _fateDifficultyController = TextEditingController();
     _qqGroupController = TextEditingController(text: widget.facade.qqGroupId);
   }
 
@@ -59,6 +58,7 @@ class _DicePanelState extends State<DicePanel> {
   void dispose() {
     _formulaController.dispose();
     _fateBonusController.dispose();
+    _fateDifficultyController.dispose();
     _qqGroupController.dispose();
     _feedScrollController.dispose();
     super.dispose();
@@ -66,8 +66,7 @@ class _DicePanelState extends State<DicePanel> {
 
   @override
   Widget build(BuildContext context) {
-    final isBattle = widget.mode == DicePanelMode.battle;
-    final collapsed = isBattle ? false : widget.facade.dicePanelCollapsed;
+    final collapsed = widget.facade.dicePanelCollapsed;
     return Container(
       width: collapsed ? 46 : 250,
       margin: widget.margin,
@@ -103,7 +102,6 @@ class _DicePanelState extends State<DicePanel> {
       builder: (context, constraints) {
         final isVeryNarrow = constraints.maxWidth < 140;
         final darkDiceEnabled = widget.facade.darkDiceEnabled;
-        final isBattle = widget.mode == DicePanelMode.battle;
         _syncQqMessages();
         return Padding(
           padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
@@ -121,121 +119,152 @@ class _DicePanelState extends State<DicePanel> {
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                     ),
-                    if (!isBattle) ...[
-                      IconButton(
-                        onPressed: () => Get.find<ProjectController>().openDiceWindow(),
-                        tooltip: '弹出为独立窗口',
-                        icon: const Icon(Icons.open_in_new, size: 18),
-                        visualDensity: VisualDensity.compact,
-                      ),
-                      IconButton(
-                        onPressed: widget.facade.toggleDicePanelCollapsed,
-                        tooltip: '折叠骰子面板',
-                        icon: const Icon(Icons.chevron_left),
-                      ),
-                    ],
+                    IconButton(
+                      onPressed: () =>
+                          Get.find<ProjectController>().openDiceWindow(),
+                      tooltip: '弹出为独立窗口',
+                      icon: const Icon(Icons.open_in_new, size: 18),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    IconButton(
+                      onPressed: widget.facade.toggleDicePanelCollapsed,
+                      tooltip: '折叠骰子面板',
+                      icon: const Icon(Icons.chevron_left),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 10),
                 _buildQqBridgeCard(),
                 const SizedBox(height: 10),
-                if (isBattle) ...[
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
                     children: [
-                      SizedBox(
-                        width: 58,
-                        height: 32,
-                        child: OutlinedButton(
-                          onPressed: _rollFate,
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 6),
-                            minimumSize: Size.zero,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            visualDensity: VisualDensity.compact,
+                      DicePresetButton(sides: 4, onRoll: _rollPreset),
+                      DicePresetButton(sides: 6, onRoll: _rollPreset),
+                      DicePresetButton(sides: 8, onRoll: _rollPreset),
+                      DicePresetButton(sides: 10, onRoll: _rollPreset),
+                      DicePresetButton(sides: 12, onRoll: _rollPreset),
+                      DicePresetButton(sides: 20, onRoll: _rollPreset),
+                      DicePresetButton(sides: 100, onRoll: _rollPreset),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 58,
+                            height: 32,
+                            child: OutlinedButton(
+                              onPressed: _rollFate,
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                ),
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                visualDensity: VisualDensity.compact,
+                              ),
+                              child: const Text('命运'),
+                            ),
                           ),
-                          child: const Text('命运'),
-                        ),
-                      ),
-                      SizedBox(
-                        width: 24,
-                        child: TextField(
-                          controller: _fateBonusController,
-                          keyboardType: TextInputType.number,
-                          textAlign: TextAlign.center,
-                          textAlignVertical: const TextAlignVertical(y: -0.5),
-                          inputFormatters: [
-                            FilteringTextInputFormatter.allow(RegExp(r'[0-9]*')),
+                          const SizedBox(width: 6),
+                          SizedBox(
+                            width: 24,
+                            child: TextField(
+                              controller: _fateBonusController,
+                              keyboardType: TextInputType.number,
+                              textAlign: TextAlign.center,
+                              textAlignVertical: const TextAlignVertical(
+                                y: -0.5,
+                              ),
+                              inputFormatters: [
+                                FilteringTextInputFormatter.allow(
+                                  RegExp(r'[0-9]*'),
+                                ),
+                              ],
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                border: OutlineInputBorder(),
+                                hintText: '0',
+                                contentPadding: EdgeInsets.only(
+                                  left: 3,
+                                  right: 0,
+                                  top: 6,
+                                  bottom: 6,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 2),
+                          OutlinedButton(
+                            onPressed: () => _adjustFateBonus(1),
+                            style: OutlinedButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              minimumSize: const Size(34, 34),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            child: const Text(
+                              '+',
+                              style: TextStyle(fontSize: 14),
+                            ),
+                          ),
+                          OutlinedButton(
+                            onPressed: () => _adjustFateBonus(-1),
+                            style: OutlinedButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              minimumSize: const Size(34, 34),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            child: const Text(
+                              '-',
+                              style: TextStyle(fontSize: 14),
+                            ),
+                          ),
+                          if (_fateDifficultyVisible) ...[
+                            const SizedBox(width: 6),
+                            SizedBox(
+                              width: 24,
+                              child: TextField(
+                                controller: _fateDifficultyController,
+                                keyboardType: TextInputType.number,
+                                textAlign: TextAlign.center,
+                                textAlignVertical: const TextAlignVertical(
+                                  y: -0.5,
+                                ),
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.allow(
+                                    RegExp(r'[0-9]*'),
+                                  ),
+                                ],
+                                decoration: const InputDecoration(
+                                  isDense: true,
+                                  border: OutlineInputBorder(),
+                                  hintText: '难',
+                                  contentPadding: EdgeInsets.only(
+                                    left: 3,
+                                    right: 0,
+                                    top: 6,
+                                    bottom: 6,
+                                  ),
+                                ),
+                              ),
+                            ),
                           ],
-                          decoration: const InputDecoration(
-                            isDense: true,
-                            border: OutlineInputBorder(),
-                            hintText: '0',
-                            contentPadding: EdgeInsets.only(left: 3, right: 0, top: 6, bottom: 6),
-                          ),
-                        ),
-                      ),
-                      OutlinedButton(
-                        onPressed: () => _adjustFateBonus(1),
-                        style: OutlinedButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          minimumSize: const Size(34, 34),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          visualDensity: VisualDensity.compact,
-                        ),
-                        child: const Text('+', style: TextStyle(fontSize: 14)),
-                      ),
-                      OutlinedButton(
-                        onPressed: () => _adjustFateBonus(-1),
-                        style: OutlinedButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          minimumSize: const Size(34, 34),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          visualDensity: VisualDensity.compact,
-                        ),
-                        child: const Text('-', style: TextStyle(fontSize: 14)),
+                        ],
                       ),
                     ],
                   ),
-                  const SizedBox(height: 9),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    child: ValueListenableBuilder<TextEditingValue>(
-                      valueListenable: _formulaController,
-                      builder: (context, value, child) {
-                        return TextField(
-                          controller: _formulaController,
-                          textAlign: TextAlign.center,
-                          decoration: InputDecoration(
-                            isDense: true,
-                            border: const OutlineInputBorder(),
-                            hintText: 'd20 / 2d6+3',
-                            contentPadding: const EdgeInsets.only(left: 6, right: 6, top: 6, bottom: 6),
-                            suffixIcon: value.text.isEmpty
-                                ? null
-                                : IconButton(
-                                    tooltip: '清空',
-                                    onPressed: () {
-                                      _formulaController.clear();
-                                      setState(() {});
-                                    },
-                                    icon: const Icon(Icons.close, size: 18),
-                                  ),
-                            suffixIconConstraints: const BoxConstraints(
-                              minWidth: 28,
-                              minHeight: 28,
-                            ),
-                          ),
-                          onSubmitted: (_) => _rollCustom(),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  const SizedBox(height: 0),
+                  Wrap(
+                    spacing: 4,
+                    runSpacing: 0,
                     children: [
                       _buildCompactCheckItem(
                         label: '暗骰',
@@ -247,17 +276,56 @@ class _DicePanelState extends State<DicePanel> {
                       ),
                       _buildCompactCheckItem(
                         label: '优势',
-                        value: _fateModifierMode == FateDiceModifierMode.advantage,
-                        onChanged: (value) => _setFateModifierMode(FateDiceModifierMode.advantage, value),
+                        value:
+                            _fateModifierMode == FateDiceModifierMode.advantage,
+                        onChanged: (value) => _setFateModifierMode(
+                          FateDiceModifierMode.advantage,
+                          value,
+                        ),
                       ),
                       _buildCompactCheckItem(
                         label: '劣势',
-                        value: _fateModifierMode == FateDiceModifierMode.disadvantage,
-                        onChanged: (value) => _setFateModifierMode(FateDiceModifierMode.disadvantage, value),
+                        value:
+                            _fateModifierMode ==
+                            FateDiceModifierMode.disadvantage,
+                        onChanged: (value) => _setFateModifierMode(
+                          FateDiceModifierMode.disadvantage,
+                          value,
+                        ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 4),
+                  ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: _formulaController,
+                    builder: (context, value, child) {
+                      return TextField(
+                        controller: _formulaController,
+                        decoration: InputDecoration(
+                          isDense: true,
+                          border: const OutlineInputBorder(),
+                          labelText: '自定义公式',
+                          hintText: '例如：2d6+1',
+                          suffixIcon: value.text.isEmpty
+                              ? null
+                              : IconButton(
+                                  tooltip: '清空',
+                                  onPressed: () {
+                                    _formulaController.clear();
+                                    setState(() {});
+                                  },
+                                  icon: const Icon(Icons.close, size: 18),
+                                ),
+                          suffixIconConstraints: const BoxConstraints(
+                            minWidth: 28,
+                            minHeight: 28,
+                          ),
+                        ),
+                        onSubmitted: (_) => _rollCustom(),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 8),
                   Row(
                     children: [
                       Expanded(
@@ -274,154 +342,6 @@ class _DicePanelState extends State<DicePanel> {
                     ],
                   ),
                   const SizedBox(height: 8),
-                ] else ...[
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    DicePresetButton(sides: 4, onRoll: _rollPreset),
-                    DicePresetButton(sides: 6, onRoll: _rollPreset),
-                    DicePresetButton(sides: 8, onRoll: _rollPreset),
-                    DicePresetButton(sides: 10, onRoll: _rollPreset),
-                    DicePresetButton(sides: 12, onRoll: _rollPreset),
-                    DicePresetButton(sides: 20, onRoll: _rollPreset),
-                    DicePresetButton(sides: 100, onRoll: _rollPreset),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(
-                          width: 58,
-                          height: 32,
-                          child: OutlinedButton(
-                            onPressed: _rollFate,
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(horizontal: 6),
-                              minimumSize: Size.zero,
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              visualDensity: VisualDensity.compact,
-                            ),
-                            child: const Text('命运'),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        SizedBox(
-                          width: 24,
-                          child: TextField(
-                            controller: _fateBonusController,
-                            keyboardType: TextInputType.number,
-                            textAlign: TextAlign.center,
-                            textAlignVertical: const TextAlignVertical(y: -0.5),
-                            inputFormatters: [
-                              FilteringTextInputFormatter.allow(RegExp(r'[0-9]*')),
-                            ],
-                            decoration: const InputDecoration(
-                              isDense: true,
-                              border: OutlineInputBorder(),
-                              hintText: '0',
-                              contentPadding: EdgeInsets.only(left: 3, right: 0, top: 6, bottom: 6),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 2),
-                        OutlinedButton(
-                          onPressed: () => _adjustFateBonus(1),
-                          style: OutlinedButton.styleFrom(
-                            padding: EdgeInsets.zero,
-                            minimumSize: const Size(34, 34),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            visualDensity: VisualDensity.compact,
-                          ),
-                          child: const Text('+', style: TextStyle(fontSize: 14)),
-                        ),
-                        OutlinedButton(
-                          onPressed: () => _adjustFateBonus(-1),
-                          style: OutlinedButton.styleFrom(
-                            padding: EdgeInsets.zero,
-                            minimumSize: const Size(34, 34),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            visualDensity: VisualDensity.compact,
-                          ),
-                          child: const Text('-', style: TextStyle(fontSize: 14)),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 0),
-                Wrap(
-                  spacing: 4,
-                  runSpacing: 0,
-                  children: [
-                    _buildCompactCheckItem(
-                      label: '暗骰',
-                      value: darkDiceEnabled,
-                      onChanged: (value) {
-                        widget.facade.setDarkDiceEnabled(value);
-                        setState(() {});
-                      },
-                    ),
-                    _buildCompactCheckItem(
-                      label: '优势',
-                      value: _fateModifierMode == FateDiceModifierMode.advantage,
-                      onChanged: (value) => _setFateModifierMode(FateDiceModifierMode.advantage, value),
-                    ),
-                    _buildCompactCheckItem(
-                      label: '劣势',
-                      value: _fateModifierMode == FateDiceModifierMode.disadvantage,
-                      onChanged: (value) => _setFateModifierMode(FateDiceModifierMode.disadvantage, value),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                ValueListenableBuilder<TextEditingValue>(
-                  valueListenable: _formulaController,
-                  builder: (context, value, child) {
-                    return TextField(
-                      controller: _formulaController,
-                      decoration: InputDecoration(
-                        isDense: true,
-                        border: const OutlineInputBorder(),
-                        labelText: '自定义公式',
-                        hintText: '例如：2d6+1',
-                        suffixIcon: value.text.isEmpty
-                            ? null
-                            : IconButton(
-                                tooltip: '清空',
-                                onPressed: () {
-                                  _formulaController.clear();
-                                  setState(() {});
-                                },
-                                icon: const Icon(Icons.close, size: 18),
-                              ),
-                        suffixIconConstraints: const BoxConstraints(
-                          minWidth: 28,
-                          minHeight: 28,
-                        ),
-                      ),
-                      onSubmitted: (_) => _rollCustom(),
-                    );
-                  },
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: _rollCustom,
-                        child: const Text('投掷'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    OutlinedButton(
-                      onPressed: _clearResult,
-                      child: const Text('清空'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                ],
                 Container(
                   height: 170,
                   decoration: BoxDecoration(
@@ -534,9 +454,7 @@ class _DicePanelState extends State<DicePanel> {
       return Padding(
         padding: const EdgeInsets.all(8),
         child: Text(
-          darkDiceEnabled
-              ? '暗骰已开启，完整结果仅保留在骰子区。'
-              : '投掷结果与骰娘消息会显示在这里。',
+          darkDiceEnabled ? '暗骰已开启，完整结果仅保留在骰子区。' : '投掷结果与骰娘消息会显示在这里。',
           style: const TextStyle(fontSize: 12),
         ),
       );
@@ -627,6 +545,7 @@ class _DicePanelState extends State<DicePanel> {
     setState(() {
       _feed.clear();
       _seenQqCount = 0;
+      _fateDifficultyController.clear();
     });
   }
 
@@ -636,10 +555,17 @@ class _DicePanelState extends State<DicePanel> {
 
   void _rollFate() {
     final bonus = int.tryParse(_fateBonusController.text.trim()) ?? 0;
+    int? difficulty;
+    if (_fateDifficultyVisible) {
+      difficulty = int.tryParse(_fateDifficultyController.text.trim());
+    } else {
+      setState(() => _fateDifficultyVisible = true);
+    }
     _appendLocalResult(
       widget.facade.rollFateDice(
         bonus: bonus,
         modifierMode: _fateModifierMode,
+        difficulty: difficulty,
       ),
     );
   }
@@ -655,9 +581,7 @@ class _DicePanelState extends State<DicePanel> {
     final next = (current + delta).clamp(0, 9999);
     _fateBonusController.value = TextEditingValue(
       text: next.toString(),
-      selection: TextSelection.collapsed(
-        offset: next.toString().length,
-      ),
+      selection: TextSelection.collapsed(offset: next.toString().length),
     );
   }
 
