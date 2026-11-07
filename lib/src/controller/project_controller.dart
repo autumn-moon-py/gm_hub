@@ -24,11 +24,13 @@ class ProjectController extends GetxController {
   Timer? _syncRetryTimer;
   int? _diceWindowId;
   int? _musicWindowId;
+  int? _cocPanelWindowId;
   String _lastMusicSignature = '';
 
   bool get outputWindowOpen => _outputWindowId != null;
   bool get diceWindowOpen => _diceWindowId != null;
   bool get musicWindowOpen => _musicWindowId != null;
+  bool get cocPanelWindowOpen => _cocPanelWindowId != null;
 
   @override
   void onInit() {
@@ -38,6 +40,7 @@ class ProjectController extends GetxController {
     });
     store.addListener(_onStoreChanged);
     store.audioListenable.addListener(_onAudioChanged);
+    store.cocPanel.addListener(_onCocPanelChanged);
   }
 
   Future<dynamic> _handleMethodCall(MethodCall call, int fromWindowId) async {
@@ -75,6 +78,12 @@ class ProjectController extends GetxController {
         final trackId = _extractString(call.arguments, 'trackId', '');
         store.setTrack(trackId.isEmpty ? null : trackId);
         return null;
+      case 'coc_panel_get_state':
+        return store.cocPanel.panelPayload;
+      case 'coc_panel_refresh':
+        return _handleCocPanelRefresh();
+      case 'coc_panel_hp':
+        return _handleCocPanelHp(call.arguments);
       default:
         return null;
     }
@@ -126,6 +135,50 @@ class ProjectController extends GetxController {
         update();
       }
     }
+  }
+
+  void _onCocPanelChanged() {
+    if (_cocPanelWindowId == null) {
+      return;
+    }
+    unawaited(_syncCocPanelWindow());
+  }
+
+  Future<void> _syncCocPanelWindow() async {
+    final targetId = _cocPanelWindowId;
+    if (targetId == null) {
+      return;
+    }
+    try {
+      await DesktopMultiWindow.invokeMethod(
+        targetId,
+        'coc_panel_sync',
+        store.cocPanel.panelPayload,
+      );
+    } catch (_) {
+      // 子窗口可能尚未就绪或已关闭，忽略；窗口初始化时会主动拉取状态
+    }
+  }
+
+  Future<dynamic> _handleCocPanelRefresh() async {
+    store.cocPanel.requestRefresh();
+    await _syncCocPanelWindow();
+    return null;
+  }
+
+  dynamic _handleCocPanelHp(dynamic arguments) {
+    if (arguments is! Map) {
+      return null;
+    }
+    final userId = arguments['userId']?.toString() ?? '';
+    final op = arguments['op']?.toString() ?? '';
+    final rawValue = arguments['value'];
+    final value = rawValue is num ? rawValue.toInt() : null;
+    if (userId.isEmpty || value == null) {
+      return null;
+    }
+    store.cocPanel.queueHpCommand(userId: userId, op: op, value: value);
+    return null;
   }
 
   Future<dynamic> _handleSelectNode(MethodCall call, int fromWindowId) async {
@@ -296,6 +349,27 @@ class ProjectController extends GetxController {
     _lastMusicSignature = '';
     update();
     await _syncMusicWindow(force: true);
+  }
+
+  Future<void> openCocPanelWindow() async {
+    final currentId = _cocPanelWindowId;
+    if (currentId != null) {
+      final ids = await DesktopMultiWindow.getAllSubWindowIds();
+      if (ids.contains(currentId)) {
+        await _syncCocPanelWindow();
+        return;
+      }
+      _cocPanelWindowId = null;
+    }
+
+    final controller = await DesktopMultiWindow.createWindow('coc_panel');
+    await controller.setFrame(const Rect.fromLTWH(120, 120, 380, 560));
+    await controller.setTitle('COC 战斗面板');
+    await controller.show();
+
+    _cocPanelWindowId = controller.windowId;
+    update();
+    await _syncCocPanelWindow();
   }
 
   Future<void> openProjectDir() async {
@@ -494,8 +568,10 @@ class ProjectController extends GetxController {
     _cancelOutputRetry();
     _diceWindowId = null;
     _musicWindowId = null;
+    _cocPanelWindowId = null;
     DesktopMultiWindow.setMethodHandler(null);
     store.audioListenable.removeListener(_onAudioChanged);
+    store.cocPanel.removeListener(_onCocPanelChanged);
     store.removeListener(_onStoreChanged);
     store.dispose();
     super.onClose();

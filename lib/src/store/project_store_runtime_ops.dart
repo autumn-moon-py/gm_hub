@@ -114,6 +114,7 @@ extension ProjectStoreRuntimeOps on ProjectStore {
   }
 
   String get qqGroupId => _runtime.qqGroupId;
+  CocPanelService get cocPanel => _runtime.cocPanel;
   bool get qqShowEnabled => _runtime.qqShowEnabled;
   QQGroupBridgeStatus get qqBridgeStatus => _runtime.qqBridgeStatus;
   List<QQMessageItem> get qqMessages => _runtime.qqMessages;

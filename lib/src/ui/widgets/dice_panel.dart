@@ -359,22 +359,29 @@ class _DicePanelState extends State<DicePanel> {
   }
 
   Widget _buildQqBridgeCard() {
+    final groupId = widget.facade.qqGroupId.trim();
     final status = widget.facade.qqBridgeStatus;
     final Color statusColor;
     final String statusLabel;
-    switch (status) {
-      case QQGroupBridgeStatus.connected:
-        statusColor = const Color(0xFF2E9E5B);
-        statusLabel = '已连接';
-        break;
-      case QQGroupBridgeStatus.connecting:
-        statusColor = const Color(0xFFE0A100);
-        statusLabel = '连接中';
-        break;
-      case QQGroupBridgeStatus.disconnected:
-        statusColor = const Color(0xFF9AA7B1);
-        statusLabel = '未连接';
-        break;
+    if (groupId.isEmpty) {
+      // WebSocket 已连通但没有群号时，还不能监听任何群消息
+      statusColor = const Color(0xFF9AA7B1);
+      statusLabel = '未关联群';
+    } else {
+      switch (status) {
+        case QQGroupBridgeStatus.connected:
+          statusColor = const Color(0xFF2E9E5B);
+          statusLabel = '已连接';
+          break;
+        case QQGroupBridgeStatus.connecting:
+          statusColor = const Color(0xFFE0A100);
+          statusLabel = '连接中';
+          break;
+        case QQGroupBridgeStatus.disconnected:
+          statusColor = const Color(0xFF9AA7B1);
+          statusLabel = '未连接';
+          break;
+      }
     }
     return Container(
       padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
@@ -436,11 +443,27 @@ class _DicePanelState extends State<DicePanel> {
               const SizedBox(width: 2),
               const Expanded(
                 child: Text(
-                  '展示骰娘消息',
+                  '关联',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                 ),
+              ),
+              const SizedBox(width: 6),
+              OutlinedButton(
+                onPressed: () =>
+                    Get.find<ProjectController>().openCocPanelWindow(),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(0, 30),
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  visualDensity: VisualDensity.compact,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  side: const BorderSide(color: Color(0xFFCEDAE3)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                ),
+                child: const Text('战斗', style: TextStyle(fontSize: 12)),
               ),
             ],
           ),
