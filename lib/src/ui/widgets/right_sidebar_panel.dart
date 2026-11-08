@@ -34,12 +34,7 @@ class RightSidebarPanel extends StatelessWidget {
                   child: _SidebarSection(
                     title: '笔记区',
                     onToggle: facade.toggleNotesPanelCollapsed,
-                    child: ListenableBuilder(
-                      listenable: facade.notesListenable,
-                      builder: (context, child) {
-                        return _NotesEditor(facade: facade);
-                      },
-                    ),
+                    child: _NotesEditor(facade: facade),
                   ),
                 ),
               if (notesCollapsed)
@@ -207,7 +202,8 @@ class _NotesEditor extends StatefulWidget {
   State<_NotesEditor> createState() => _NotesEditorState();
 }
 
-class _NotesEditorState extends State<_NotesEditor> {
+class _NotesEditorState extends State<_NotesEditor>
+    with WidgetsBindingObserver {
   static const double _expandButtonSize = 34;
   static const double _expandButtonRightInset = 10;
   static const double _expandButtonBottomInset = 10;
@@ -234,6 +230,8 @@ class _NotesEditorState extends State<_NotesEditor> {
     _focusNode.addListener(_saveViewState);
     _scrollController.addListener(_saveViewState);
     widget.facade.notesFontSizeListenable.addListener(_onFontSizeChanged);
+    widget.facade.notesListenable.addListener(_onNotesChanged);
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _focusNode.hasFocus) {
         return;
@@ -245,11 +243,23 @@ class _NotesEditorState extends State<_NotesEditor> {
   @override
   void didUpdateWidget(covariant _NotesEditor oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.facade != widget.facade) {
+      oldWidget.facade.notesListenable.removeListener(_onNotesChanged);
+      widget.facade.notesListenable.addListener(_onNotesChanged);
+    }
+    _syncFromStore();
+  }
+
+  /// 把 store 中的笔记同步到输入框。
+  ///
+  /// 仅当本地没有未提交输入且不在输入法组字中时才覆盖，避免打断输入；
+  /// 不再依赖焦点状态，避免切换项目后旧笔记被写回新项目。
+  void _syncFromStore() {
     final nextText = widget.facade.notesText;
     if (nextText == _syncedText || nextText == _controller.text) {
       return;
     }
-    if (_focusNode.hasFocus || _controller.value.composing.isValid) {
+    if (_notesSyncTimer != null || _controller.value.composing.isValid) {
       return;
     }
     final savedSelection = widget.facade.notesEditorViewState.selection;
@@ -268,6 +278,46 @@ class _NotesEditorState extends State<_NotesEditor> {
     );
   }
 
+  void _onNotesChanged() {
+    _syncFromStore();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) {
+      return;
+    }
+    // Flutter 会先恢复 lifecycle、再恢复输入框焦点，因此延后一帧判断。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_focusNode.hasFocus) {
+        return;
+      }
+      if (_controller.value.composing.isValid) {
+        return;
+      }
+      _rebuildInputConnection();
+    });
+  }
+
+  /// 窗口重新激活后重建输入连接，规避 Windows IME 未重新关联导致的只能输入英文。
+  void _rebuildInputConnection() {
+    final selection = _controller.selection;
+    _focusNode.unfocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _focusNode.hasFocus) {
+        return;
+      }
+      _focusNode.requestFocus();
+      if (selection.isValid) {
+        final maxOffset = _controller.text.length;
+        _controller.selection = TextSelection(
+          baseOffset: selection.baseOffset.clamp(0, maxOffset),
+          extentOffset: selection.extentOffset.clamp(0, maxOffset),
+        );
+      }
+    });
+  }
+
   @override
   void dispose() {
     _flushPendingNotesSync();
@@ -275,6 +325,8 @@ class _NotesEditorState extends State<_NotesEditor> {
     _focusNode.removeListener(_saveViewState);
     _scrollController.removeListener(_saveViewState);
     widget.facade.notesFontSizeListenable.removeListener(_onFontSizeChanged);
+    widget.facade.notesListenable.removeListener(_onNotesChanged);
+    WidgetsBinding.instance.removeObserver(this);
     _notesSyncTimer?.cancel();
     _controller.dispose();
     _focusNode.dispose();
@@ -470,11 +522,9 @@ class _NotesFullscreenPageState extends State<_NotesFullscreenPage> {
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(16),
-              child: ListenableBuilder(
-                listenable: widget.facade.notesListenable,
-                builder: (context, child) {
-                  return _NotesEditor(facade: widget.facade, showExpandButton: false);
-                },
+              child: _NotesEditor(
+                facade: widget.facade,
+                showExpandButton: false,
               ),
             ),
           ),
