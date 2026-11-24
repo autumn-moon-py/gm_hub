@@ -17,6 +17,7 @@ import '../model/project_model.dart';
 import '../model/render_item.dart';
 import '../service/bridge/excalidraw/excalidraw_output_bridge.dart';
 import '../service/coc/coc_panel_service.dart';
+import '../service/mouse/mouse_panel_service.dart';
 import '../service/bridge/mausritter/mausritter_dice_bridge_server.dart';
 import '../service/qq_group_bridge.dart';
 import 'asset_cache_service.dart';

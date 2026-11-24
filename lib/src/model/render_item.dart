@@ -22,6 +22,7 @@ class RenderItem {
     this.textHandleHeight = 0,
     this.preserveAspect = false,
     this.isBackground = false,
+    this.stretchToFill = false,
     required this.baseWidth,
     required this.baseHeight,
   });
@@ -44,6 +45,7 @@ class RenderItem {
   final double textHandleHeight;
   final bool preserveAspect;
   final bool isBackground;
+  final bool stretchToFill;
   final double baseWidth;
   final double baseHeight;
 }

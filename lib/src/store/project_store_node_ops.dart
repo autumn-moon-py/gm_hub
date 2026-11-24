@@ -360,6 +360,7 @@ extension ProjectStoreNodeOps on ProjectStore {
           transform: centeredTransform,
           width: size.width,
           height: size.height,
+          stretchToFill: false,
         ),
       ),
     );
@@ -675,6 +676,7 @@ extension ProjectStoreNodeOps on ProjectStore {
       ),
       width: canvas.width,
       height: canvas.height,
+      stretchToFill: true,
     );
   }
 }

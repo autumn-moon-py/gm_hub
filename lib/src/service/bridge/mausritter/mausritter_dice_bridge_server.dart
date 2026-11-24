@@ -8,6 +8,8 @@ class MausritterDiceBridgeServer extends LocalBridgeServer {
   MausritterDiceBridgeServer({
     required this.roll,
     this.syncCocPanel,
+    this.syncMousePanel,
+    this.mousePanelState,
   }) : super(
           port: bridgePort,
           healthPath: '/dice/health',
@@ -24,14 +26,32 @@ class MausritterDiceBridgeServer extends LocalBridgeServer {
   final Map<String, Object?> Function(Map<String, dynamic> payload)?
       syncCocPanel;
 
+  /// 鼠鼠战斗面板同步；为空时该路由返回不可用。
+  final Map<String, Object?> Function(Map<String, dynamic> payload)?
+      syncMousePanel;
+
+  /// 鼠鼠面板快照只读查询（GET /mouse/panel/state），供辅助表等外部页面使用。
+  final Map<String, Object?> Function()? mousePanelState;
+
   @override
   Future<bool> handle(HttpRequest request, HttpResponse response) async {
-    if (request.method == 'POST' && request.uri.path == '/coc/panel/sync') {
-      final handler = syncCocPanel;
+    final path = request.uri.path;
+    if (request.method == 'GET' && path == '/mouse/panel/state') {
+      await respond(
+        response,
+        HttpStatus.ok,
+        mousePanelState?.call() ?? {'ok': false, 'error': 'mouse panel unavailable'},
+      );
+      return true;
+    }
+    final isCocSync = request.method == 'POST' && path == '/coc/panel/sync';
+    final isMouseSync = request.method == 'POST' && path == '/mouse/panel/sync';
+    if (isCocSync || isMouseSync) {
+      final handler = isMouseSync ? syncMousePanel : syncCocPanel;
       if (handler == null) {
         await respond(response, HttpStatus.serviceUnavailable, {
           'ok': false,
-          'error': 'coc panel unavailable',
+          'error': isMouseSync ? 'mouse panel unavailable' : 'coc panel unavailable',
         });
         return true;
       }

@@ -17,7 +17,8 @@ abstract class LocalBridgeServer {
   final String healthPath;
   final String appName;
 
-  static const int _maxBodyBytes = 4096;
+  /// 战斗面板同步会一次带上插件中所有群与玩家的快照，4096 字节远远不够。
+  static const int _maxBodyBytes = 256 * 1024;
 
   HttpServer? _server;
 

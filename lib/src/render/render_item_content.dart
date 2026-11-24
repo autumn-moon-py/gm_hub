@@ -45,7 +45,9 @@ class RenderItemContent extends StatelessWidget {
     if (path != null && path.isNotEmpty) {
       return Image.file(
         File(path),
-        fit: item.isBackground ? BoxFit.fill : BoxFit.contain,
+        fit: (item.isBackground || item.stretchToFill)
+            ? BoxFit.fill
+            : BoxFit.contain,
         errorBuilder: (context, error, stackTrace) {
           return showImagePlaceholder
               ? _imagePlaceholder()

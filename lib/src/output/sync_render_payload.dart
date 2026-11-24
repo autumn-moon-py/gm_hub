@@ -151,6 +151,7 @@ class SyncRenderPayload {
       'textHandleHeight': item.textHandleHeight,
       'preserveAspect': item.preserveAspect,
       'isBackground': item.isBackground,
+      'stretchToFill': item.stretchToFill,
       'assetAbsolutePath': item.assetAbsolutePath,
     };
   }
@@ -190,6 +191,7 @@ RenderItem _parseRenderItem(Map<dynamic, dynamic> m) {
     textHandleHeight: ((m['textHandleHeight'] as num?) ?? 0).toDouble(),
     preserveAspect: (m['preserveAspect'] as bool?) ?? false,
     isBackground: (m['isBackground'] as bool?) ?? false,
+    stretchToFill: (m['stretchToFill'] as bool?) ?? false,
     assetAbsolutePath: m['assetAbsolutePath'] as String?,
   );
 }

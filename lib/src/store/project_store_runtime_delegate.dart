@@ -32,10 +32,14 @@ class _ProjectRuntimeDelegate {
   late final QQGroupBridge _qqBridge;
   late final CocPanelService _cocPanelService =
       CocPanelService(configuredGroupId: () => _qqGroupId);
+  late final MousePanelService _mousePanelService =
+      MousePanelService(configuredGroupId: () => _qqGroupId);
   late final MausritterDiceBridgeServer _mausritterDiceBridge =
       MausritterDiceBridgeServer(
         roll: rollDiceForExternal,
         syncCocPanel: _cocPanelService.handleSync,
+        syncMousePanel: _mousePanelService.handleSync,
+        mousePanelState: () => _mousePanelService.statePayload,
       );
   String _qqGroupId = '';
   bool _qqShowEnabled = false;
@@ -43,6 +47,7 @@ class _ProjectRuntimeDelegate {
 
   String? get audioError => _audioError;
   CocPanelService get cocPanel => _cocPanelService;
+  MousePanelService get mousePanel => _mousePanelService;
   bool get dicePanelCollapsed => _dicePanelCollapsed;
   bool get darkDiceEnabled => _darkDiceEnabled;
   String get qqGroupId => _qqGroupId;
@@ -96,6 +101,7 @@ class _ProjectRuntimeDelegate {
     _qqBridge.dispose();
     unawaited(_mausritterDiceBridge.stop());
     _cocPanelService.dispose();
+    _mousePanelService.dispose();
     ExcalidrawOutputBridge.instance.dispose();
   }
 
@@ -155,6 +161,7 @@ class _ProjectRuntimeDelegate {
     _qqGroupId = next;
     _qqBridge.updateGroupId(next);
     _cocPanelService.onConfiguredGroupChanged();
+    _mousePanelService.onConfiguredGroupChanged();
     _notifyDiceOnly();
   }
 

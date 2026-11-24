@@ -41,6 +41,7 @@ class ProjectController extends GetxController {
     store.addListener(_onStoreChanged);
     store.audioListenable.addListener(_onAudioChanged);
     store.cocPanel.addListener(_onCocPanelChanged);
+    store.mousePanel.addListener(_onMousePanelChanged);
   }
 
   Future<dynamic> _handleMethodCall(MethodCall call, int fromWindowId) async {
@@ -79,11 +80,13 @@ class ProjectController extends GetxController {
         store.setTrack(trackId.isEmpty ? null : trackId);
         return null;
       case 'coc_panel_get_state':
-        return store.cocPanel.panelPayload;
+        return _buildBattlePanelPayload();
       case 'coc_panel_refresh':
         return _handleCocPanelRefresh();
       case 'coc_panel_hp':
         return _handleCocPanelHp(call.arguments);
+      case 'mouse_panel_recommend':
+        return _handleMouseRecommend(call.arguments);
       default:
         return null;
     }
@@ -144,6 +147,25 @@ class ProjectController extends GetxController {
     unawaited(_syncCocPanelWindow());
   }
 
+  void _onMousePanelChanged() {
+    if (_cocPanelWindowId == null) {
+      return;
+    }
+    unawaited(_syncCocPanelWindow());
+  }
+
+  /// 同一战斗窗口按当前群的数据自动切换 COC / 鼠鼠。
+  /// 两种卡的属性集互斥，鼠鼠有玩家时优先显示鼠鼠。
+  Map<String, dynamic> _buildBattlePanelPayload() {
+    final mouse = store.mousePanel.panelPayload;
+    final coc = store.cocPanel.panelPayload;
+    final mousePlayers = mouse['players'] as List<Object?>? ?? const [];
+    final useMouse = mousePlayers.isNotEmpty;
+    final payload = Map<String, dynamic>.from(useMouse ? mouse : coc);
+    payload['system'] = useMouse ? 'mouse' : 'coc';
+    return payload;
+  }
+
   Future<void> _syncCocPanelWindow() async {
     final targetId = _cocPanelWindowId;
     if (targetId == null) {
@@ -153,7 +175,7 @@ class ProjectController extends GetxController {
       await DesktopMultiWindow.invokeMethod(
         targetId,
         'coc_panel_sync',
-        store.cocPanel.panelPayload,
+        _buildBattlePanelPayload(),
       );
     } catch (_) {
       // 子窗口可能尚未就绪或已关闭，忽略；窗口初始化时会主动拉取状态
@@ -162,6 +184,7 @@ class ProjectController extends GetxController {
 
   Future<dynamic> _handleCocPanelRefresh() async {
     store.cocPanel.requestRefresh();
+    store.mousePanel.requestRefresh();
     await _syncCocPanelWindow();
     return null;
   }
@@ -178,6 +201,19 @@ class ProjectController extends GetxController {
       return null;
     }
     store.cocPanel.queueHpCommand(userId: userId, op: op, value: value);
+    return null;
+  }
+
+  dynamic _handleMouseRecommend(dynamic arguments) {
+    if (arguments is! Map) {
+      return null;
+    }
+    final userId = arguments['userId']?.toString() ?? '';
+    final text = arguments['text']?.toString() ?? '';
+    if (userId.isEmpty || text.isEmpty) {
+      return null;
+    }
+    store.mousePanel.queueRecommend(userId: userId, text: text);
     return null;
   }
 
@@ -363,8 +399,8 @@ class ProjectController extends GetxController {
     }
 
     final controller = await DesktopMultiWindow.createWindow('coc_panel');
-    await controller.setFrame(const Rect.fromLTWH(120, 120, 380, 560));
-    await controller.setTitle('COC 战斗面板');
+    await controller.setFrame(const Rect.fromLTWH(120, 120, 420, 660));
+    await controller.setTitle('战斗面板');
     await controller.show();
 
     _cocPanelWindowId = controller.windowId;
@@ -572,6 +608,7 @@ class ProjectController extends GetxController {
     DesktopMultiWindow.setMethodHandler(null);
     store.audioListenable.removeListener(_onAudioChanged);
     store.cocPanel.removeListener(_onCocPanelChanged);
+    store.mousePanel.removeListener(_onMousePanelChanged);
     store.removeListener(_onStoreChanged);
     store.dispose();
     super.onClose();

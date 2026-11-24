@@ -147,6 +147,7 @@ extension ProjectStoreGeometryOps on ProjectStore {
           textHandleHeight: handleHeight,
           preserveAspect: currentPreserveAspect,
           isBackground: currentIsBackground,
+          stretchToFill: node.stretchToFill,
           baseWidth: size.width,
           baseHeight: size.height,
         ),

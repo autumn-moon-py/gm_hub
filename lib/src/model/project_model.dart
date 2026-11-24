@@ -139,6 +139,9 @@ class NodeModel {
   final double? width;
   final double? height;
 
+  /// 显式记录"拉伸到输出尺寸"语义：与背景组无关，跨组移动后仍保持铺满
+  final bool stretchToFill;
+
   const NodeModel({
     required this.id,
     required this.type,
@@ -154,6 +157,7 @@ class NodeModel {
     this.textColorValue,
     this.width,
     this.height,
+    this.stretchToFill = false,
   });
 
   static String _defaultName(NodeType type) {
@@ -194,6 +198,7 @@ class NodeModel {
       textColorValue: _readJsonNullableInt(json['textColorValue']),
       width: _readJsonNullableDouble(json['width']),
       height: _readJsonNullableDouble(json['height']),
+      stretchToFill: (json['stretchToFill'] as bool?) ?? false,
     );
   }
 
@@ -215,6 +220,7 @@ class NodeModel {
     int? textColorValue,
     double? width,
     double? height,
+    bool? stretchToFill,
   }) {
     return NodeModel(
       id: id ?? this.id,
@@ -231,6 +237,7 @@ class NodeModel {
       textColorValue: textColorValue ?? this.textColorValue,
       width: width ?? this.width,
       height: height ?? this.height,
+      stretchToFill: stretchToFill ?? this.stretchToFill,
     );
   }
 
@@ -251,8 +258,34 @@ class NodeModel {
         'textColorValue': textColorValue,
       if (!isGroup && width != null) 'width': width,
       if (!isGroup && height != null) 'height': height,
+      if (!isGroup && stretchToFill) 'stretchToFill': stretchToFill,
     };
   }
+}
+
+/// 兼容旧存档：历史版本的"拉伸到输出尺寸"只写了 width/height，
+/// 这里按与画布等尺寸的图片节点反推 stretchToFill，避免旧项目加载后失去铺满。
+NodeModel _migrateStretchToFill(NodeModel node, CanvasModel canvas) {
+  if (node.isGroup) {
+    var changed = false;
+    final children = node.children.map((child) {
+      final next = _migrateStretchToFill(child, canvas);
+      if (!identical(next, child)) {
+        changed = true;
+      }
+      return next;
+    }).toList(growable: false);
+    return changed ? node.copyWith(children: children) : node;
+  }
+  if (node.type != NodeType.image ||
+      node.stretchToFill ||
+      node.width == null ||
+      node.height == null) {
+    return node;
+  }
+  final matchesCanvas = (node.width! - canvas.width).abs() < 0.5 &&
+      (node.height! - canvas.height).abs() < 0.5;
+  return matchesCanvas ? node.copyWith(stretchToFill: true) : node;
 }
 
 class AudioTrackModel {
@@ -533,17 +566,19 @@ class ProjectModel {
     final rawAudio =
         (json['audio'] as Map?)?.cast<String, dynamic>() ?? const {};
     final rawTracks = rawAudio['tracks'];
+    final canvas = CanvasModel.fromJson(
+      (json['canvas'] as Map?)?.cast<String, dynamic>() ?? const {},
+    );
+    final root = NodeModel.fromJson(
+      (json['root'] as Map?)?.cast<String, dynamic>() ??
+          ProjectModel.initial().root.toJson(),
+    );
     return ProjectModel(
       version: _readJsonInt(json['version'], fallback: 1),
       formatVersion: _readJsonInt(json['formatVersion'], fallback: 1),
       name: (json['name'] as String?) ?? '主持中枢项目',
-      canvas: CanvasModel.fromJson(
-        (json['canvas'] as Map?)?.cast<String, dynamic>() ?? const {},
-      ),
-      root: NodeModel.fromJson(
-        (json['root'] as Map?)?.cast<String, dynamic>() ??
-            ProjectModel.initial().root.toJson(),
-      ),
+      canvas: canvas,
+      root: _migrateStretchToFill(root, canvas),
       tracks: rawTracks is List
           ? rawTracks
               .whereType<Map>()
