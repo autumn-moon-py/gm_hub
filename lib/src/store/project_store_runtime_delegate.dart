@@ -37,6 +37,9 @@ class _ProjectRuntimeDelegate {
   late final MausritterDiceBridgeServer _mausritterDiceBridge =
       MausritterDiceBridgeServer(
         roll: rollDiceForExternal,
+        reportDiceResult: (text) =>
+            pushFlowMessage(text, color: const Color(0xFFFFF59D)),
+        clearDiceResult: clearFlowMessages,
         syncCocPanel: _cocPanelService.handleSync,
         syncMousePanel: _mousePanelService.handleSync,
         mousePanelState: () => _mousePanelService.statePayload,

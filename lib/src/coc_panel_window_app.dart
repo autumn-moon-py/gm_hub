@@ -612,11 +612,7 @@ class _CocPanelWindowAppState extends State<CocPanelWindowApp> {
                 if (weapon.damage.isNotEmpty)
                   _recommendButton(
                     '${weapon.name} ${weapon.damage}',
-                    _modeCommand(
-                      '.mt ${weapon.damage}',
-                      '.mtb ${weapon.damage}',
-                      '.mtp ${weapon.damage}',
-                    ),
+                    '.r ${weapon.damage}',
                   ),
               _recommendButton('伤害 d6', _modeCommand('.mt d6', '.mtb d6', '.mtp d6')),
               _recommendButton('伤害 d8', _modeCommand('.mt d8', '.mtb d8', '.mtp d8')),
